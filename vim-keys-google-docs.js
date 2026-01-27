@@ -111,7 +111,11 @@
 
     iframe.contentDocument.addEventListener("keydown", eventHandler, true);
 
-    const cursorTop = document.getElementsByClassName("kix-cursor-top")[0];
+    // Helper to get cursor element (may not exist initially or may change)
+    function getCursorTop() {
+      return document.getElementsByClassName("kix-cursor-top")[0] || null;
+    }
+
     let mode = "normal";
     let tempnormal = false;
     let replaceCharMode = false;
@@ -148,8 +152,16 @@
       return { shift, [paragraphModifierKey]: true };
     }
 
-    //Mode indicator thing (insert, visualline)
+    // Mode indicator element (insert, visual, etc.)
+    // Remove existing indicator if present to prevent duplicates on re-init
+    const existingIndicator = document.getElementById(
+      "docskeys-mode-indicator",
+    );
+    if (existingIndicator) {
+      existingIndicator.remove();
+    }
     const modeIndicator = document.createElement("div");
+    modeIndicator.id = "docskeys-mode-indicator";
     modeIndicator.style.position = "fixed";
     modeIndicator.style.bottom = "20px";
     modeIndicator.style.right = "20px";
@@ -198,6 +210,7 @@
       const args = { keyCode, mods: { ...defaultMods, ...mods } };
 
       let detailData = args;
+      // Firefox only
       if (typeof cloneInto === "function") {
         detailData = cloneInto(args, window);
       }
@@ -239,10 +252,11 @@
 
       replaceCharMode = false;
 
-      if (cursorTop) {
-        cursorTop.style.opacity = 1;
-        cursorTop.style.display = "block";
-        cursorTop.style.backgroundColor = "black";
+      const cursor = getCursorTop();
+      if (cursor) {
+        cursor.style.opacity = 1;
+        cursor.style.display = "block";
+        cursor.style.backgroundColor = "black";
       }
       // Refocus the editor
       setTimeout(() => {
@@ -255,7 +269,8 @@
     function switchModeToInsert() {
       mode = "insert";
       updateModeIndicator(mode);
-      if (cursorTop) cursorTop.style.opacity = 0;
+      const cursor = getCursorTop();
+      if (cursor) cursor.style.opacity = 0;
     }
 
     let longStringOp = "";
@@ -315,7 +330,7 @@
       switchModeToInsert();
     }
     function handleAppend() {
-      const cursor = document.getElementsByClassName("kix-cursor-top")[0];
+      const cursor = getCursorTop();
       if (!cursor) {
         sendKeyEvent("right");
         switchModeToInsert();
@@ -323,13 +338,14 @@
       }
       const originalTop = cursor.getBoundingClientRect().top;
       sendKeyEvent("right");
-      setTimeout(() => {
-        const newTop = cursor.getBoundingClientRect().top;
-        if (newTop > originalTop + 10) {
-          sendKeyEvent("left");
-        }
-        switchModeToInsert();
-      }, 20);
+      // Use requestAnimationFrame to wait for cursor position update
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const newTop = cursor.getBoundingClientRect().top;
+          if (newTop > originalTop + 10) sendKeyEvent("left");
+          switchModeToInsert();
+        });
+      });
     }
     function runLongStringOp(operation = longStringOp) {
       switch (operation) {
@@ -493,10 +509,11 @@
         if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
           sendKeyEvent("delete");
 
-          setTimeout(() => {
+          // Use requestAnimationFrame to wait for delete to process
+          requestAnimationFrame(() => {
             sendKeyEvent("left");
             switchModeToNormal();
-          }, 10);
+          });
 
           return;
         }
