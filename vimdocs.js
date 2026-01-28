@@ -48,6 +48,11 @@
    */
   const COLORSCHEME = {
     cursor: "khaki",
+    bg: {
+      core: "#101825",
+      mantle: "#1A283F",
+      surface: "#22385C",
+    },
     mode: {
       normal: { bg: "#1670AD", fg: "white" },
       insert: { bg: "#2B8A5E", fg: "white" },
