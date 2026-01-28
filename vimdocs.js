@@ -73,7 +73,16 @@
     last_active_element: null,
 
     getCursor: () => {
-      return document.getElementById("kix-current-user-cursor-caret") || null;
+      const cursor =
+        document.getElementById("kix-current-user-cursor-caret") || null;
+      if (cursor) {
+        cursor.style.setProperty(
+          "border-color",
+          COLORSCHEME["cursor"],
+          "important",
+        );
+      }
+      return cursor;
     },
     getFindWindow: () => {
       return document.getElementById("docs-findbar-id") || null;
@@ -460,11 +469,6 @@
         if (cursor) {
           cursor.style.opacity = 1;
           cursor.style.display = "block";
-          cursor.style.setProperty(
-            "border-color",
-            COLORSCHEME["cursor"],
-            "important",
-          );
           const parent = cursor.parentElement;
           if (parent) parent.classList.remove("vim-no-cursor-animation");
         }
