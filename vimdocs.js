@@ -29,7 +29,7 @@
   What it would contain: selectToStartOfLine, selectToEndOfLine, selectToStartOfWord, selectToEndOfWord, selectToEndOfPara, selectInnerWord
 
   Object: Find
-  What it would contain: STATE.search.*, handleFindChar, handleSlashSearch, handleStarSearch, closeFindWindow, hideFindWindowAndRefocus
+  What it would contain: STATE.search.*, handleFindChar, handleSlashSearch, handleStarSearch, closeFindWindow, hideFindBar
 
   Object: Operator
   What it would contain: STATE.longStringOp, runLongStringOp, waitForFirstInput, waitForSecondInput, waitForTextObject, waitForVisualInput
@@ -1038,7 +1038,14 @@
 
       if (e.key === "Escape") {
         e.preventDefault();
-        if (STATE.search.active) closeFindWindow();
+        if (STATE.search.active) {
+          const wasCharSearch = STATE.search.isCharSearch;
+          const wasForward = STATE.search.forward;
+          closeFindWindow();
+          if (wasCharSearch) {
+              sendKeyEvent("left");
+          }
+        }
         if (Mode.current === "v-line" || Mode.current === "visual")
           sendKeyEvent("right");
         Mode.toNormal();
@@ -1093,11 +1100,26 @@
     /**
      * Hides the Google Docs find bar and refocuses the editor.
      */
-    function hideFindWindowAndRefocus() {
+    function hideFindBar() {
       const findWindow = GoogleDocs.getFindWindow();
       if (findWindow) findWindow.style.display = "none";
 
       GoogleDocs.restoreFocus(() => Mode.toNormal());
+    }
+
+    /**
+     * Closes the find window, reversing search direction first if needed.
+     * @param {boolean} forward - If false, reverses direction before closing.
+     */
+    function finishSearch(forward) {
+      if (!forward) {
+        setTimeout(() => {
+          sendKeyEvent("g", { control: true, shift: true });
+          hideFindBar();
+        }, 100);
+      } else {
+        hideFindBar();
+      }
     }
 
     /**
@@ -1113,7 +1135,7 @@
         if (activeEl && activeEl.tagName === "INPUT") {
           activeEl.value = key;
           activeEl.dispatchEvent(new Event("input", { bubbles: true }));
-          hideFindWindowAndRefocus();
+          finishSearch(STATE.search.forward);
         }
       }, 100);
 
@@ -1144,7 +1166,7 @@
             findInput.value = text;
             findInput.dispatchEvent(new Event("input", { bubbles: true }));
             STATE.search.lastSearch = text;
-            hideFindWindowAndRefocus();
+            finishSearch(forward);
           } else {
             // Wait for user to type and press Enter
             const handleEnter = (e) => {
@@ -1154,7 +1176,7 @@
                 e.stopImmediatePropagation();
                 findInput.removeEventListener("keydown", handleEnter, true);
                 STATE.search.lastSearch = findInput.value;
-                hideFindWindowAndRefocus();
+                finishSearch(forward);
               }
             };
             findInput.addEventListener("keydown", handleEnter, true);
@@ -1191,7 +1213,7 @@
             if (activeEl && activeEl.tagName === "INPUT") {
               activeEl.value = selectedText;
               activeEl.dispatchEvent(new Event("input", { bubbles: true }));
-              hideFindWindowAndRefocus();
+              hideFindBar();
             }
           }, 100);
         }
@@ -1217,10 +1239,10 @@
           });
           find_input.dispatchEvent(escEvent);
         }
-        STATE.search.active = false;
-        STATE.search.forward = true;
-        STATE.search.isCharSearch = false;
       }
+      STATE.search.active = false;
+      STATE.search.forward = true;
+      STATE.search.isCharSearch = false;
     }
 
     /**
@@ -1361,7 +1383,12 @@
         const isSlashCycleKey =
           !STATE.search.isCharSearch && (key === "n" || key === "N");
         if (!isCharCycleKey && !isSlashCycleKey) {
+          const wasCharSearch = STATE.search.isCharSearch;
+          const wasForward = STATE.search.forward;
           closeFindWindow();
+          if (wasCharSearch) {
+              sendKeyEvent("left");
+          }
         }
       }
 
