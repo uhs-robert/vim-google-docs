@@ -15,7 +15,6 @@
 // ==/UserScript==
 
 // TODO: Add more `:` commands (e.g., :q, :run (open alt+/), :$s/text/replace/gc etc.)
-// TODO: `>` and `<` to Ctrl+[ and Ctrl+] respectively for paragraph indentation
 // TODO: `g` to trigger go options: gg=to top, gf=follow link (), gm=open menu (alt+/), gu=lowercase, gU=uppercase g[=previousTab, g]=nextTab, gh=showHelp)
 // TODO: `.` is repeat last action (ctrl+y)
 
@@ -207,6 +206,7 @@
     const keyCodes = {
       backspace: 8,
       enter: 13,
+      space: 32,
       esc: 27,
       pageup: 33,
       pagedown: 34,
@@ -418,6 +418,8 @@
           this.current === "waitForVisualInput" ||
           this.current === "waitForTextObject" ||
           this.current === "waitForFindChar" ||
+          this.current === "waitForIndent" ||
+          this.current === "waitForOutdent" ||
           this.current === "waitForZoom" ||
           this.current === "multipleMotion"
         );
@@ -971,6 +973,14 @@
     function eventHandler(e) {
       if (["Shift", "Meta", "Control", "Alt", ""].includes(e.key)) return;
 
+      // Ctrl+Space: Toggle checkbox (sends Ctrl+Alt+Enter)
+      if (e.ctrlKey && e.key === " ") {
+        e.preventDefault();
+        e.stopPropagation();
+        sendKeyEvent("enter", { control: true, alt: true });
+        return;
+      }
+
       if (e.ctrlKey && Mode.current === "normal") {
         if (e.key === "u") {
           e.preventDefault();
@@ -1054,6 +1064,12 @@
             break;
           case "waitForFindChar":
             handleFindChar(e.key);
+            break;
+          case "waitForIndent":
+            handleIndent(e.key);
+            break;
+          case "waitForOutdent":
+            handleOutdent(e.key);
             break;
           case "waitForZoom":
             handleZoom(e.key);
@@ -1193,6 +1209,66 @@
         STATE.search.forward = true;
         STATE.search.isCharSearch = false;
       }
+    }
+
+    /**
+     * Handles indent command (vim `>>`).
+     * Also handles list formatting: >* (bullet), >- (hyphen), >n (numbered), >[ or >] (checklist).
+     * @param {string} key - The key pressed after `>`.
+     */
+    function handleIndent(key) {
+      switch (key) {
+        case ">":
+          // Indent current line
+          sendKeyEvent("bracketRight", { control: true });
+          break;
+        case "*":
+        case "-":
+        case "l":
+          // Bullet list (Ctrl+Shift+8)
+          sendKeyEvent("eight", { control: true, shift: true });
+          break;
+        case "n":
+          // Numbered list (Ctrl+Shift+7)
+          sendKeyEvent("seven", { control: true, shift: true });
+          break;
+        case "[":
+        case "]":
+        case "t":
+          // Checklist (Ctrl+Shift+9)
+          sendKeyEvent("nine", { control: true, shift: true });
+          break;
+      }
+      Mode.toNormal();
+    }
+
+    /**
+     * Handles outdent command (vim `<<`).
+     * Also handles removing list formatting with same keys as indent (toggles off).
+     * @param {string} key - The key pressed after `<`.
+     */
+    function handleOutdent(key) {
+      switch (key) {
+        case "<":
+          // Outdent current line
+          sendKeyEvent("bracketLeft", { control: true });
+          break;
+        case "*":
+        case "-":
+          // Toggle off bullet list (Ctrl+Shift+8)
+          sendKeyEvent("eight", { control: true, shift: true });
+          break;
+        case "n":
+          // Toggle off numbered list (Ctrl+Shift+7)
+          sendKeyEvent("seven", { control: true, shift: true });
+          break;
+        case "[":
+        case "]":
+          // Toggle off checklist (Ctrl+Shift+9)
+          sendKeyEvent("nine", { control: true, shift: true });
+          break;
+      }
+      Mode.toNormal();
     }
 
     /**
@@ -1378,6 +1454,12 @@
         case "x":
           sendKeyEvent("delete");
           break;
+        case ">":
+          Mode.current = "waitForIndent";
+          return;
+        case "<":
+          Mode.current = "waitForOutdent";
+          return;
         case "z":
           Mode.current = "waitForZoom";
           return;
@@ -1471,6 +1553,16 @@
           break;
         case "x":
           clickMenu(menuItems.cut);
+          Mode.toNormal(true);
+          break;
+        case ">":
+          // Indent selection
+          sendKeyEvent("bracketRight", { control: true });
+          Mode.toNormal(true);
+          break;
+        case "<":
+          // Outdent selection
+          sendKeyEvent("bracketLeft", { control: true });
           Mode.toNormal(true);
           break;
       }
