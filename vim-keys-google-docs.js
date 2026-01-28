@@ -140,18 +140,21 @@
 
     console.debug("VimKeys: Initializing...");
     iframe.contentDocument.addEventListener("keydown", eventHandler, true);
-
-    // Helper to get cursor element (may not exist initially or may change)
-    function getCursorTop() {
-      return document.getElementsByClassName("kix-cursor-top")[0] || null;
-    }
-
-    let mode = "normal";
-    let tempnormal = false;
-    let replaceCharMode = false;
-    let multipleMotion = {
-      times: 0,
+    const STATE = {
       mode: "normal",
+      tempNormal: false,
+      replaceCharMode: false,
+      search: {
+        active: false,
+        forward: true, // true for f and /, false for F
+        isCharSearch: false, // true for f/F, false for /
+        lastSearch: null,
+      },
+      multipleMotion: {
+        times: 0,
+        mode: "normal",
+      },
+      longStringOp: "",
     };
 
     const isMac = /Mac/.test(navigator.platform || navigator.userAgent);
@@ -261,34 +264,35 @@
     }
 
     function repeatMotion(motion, times, key) {
-      for (let i = 0; i < times; i++) {
-        motion(key);
-      }
+      for (let i = 0; i < times; i++) motion(key);
     }
 
     function switchModeToVisual() {
-      mode = "visual";
-      updateModeIndicator(mode);
+      STATE.mode = "visual";
+      updateModeIndicator(STATE.mode);
       sendKeyEvent("right", { shift: true });
     }
 
     function switchModeToVisualLine() {
-      mode = "v-line";
-      updateModeIndicator(mode);
-      sendKeyEvent("home");
-      sendKeyEvent("end", { shift: true });
+      STATE.mode = "v-line";
+      updateModeIndicator(STATE.mode);
+      goToStartOfLine();
+      selectToEndOfLine();
     }
 
-    function switchModeToNormal() {
-      if (mode === "v-line" || mode === "visual") {
+    function switchModeToNormal(skipDeselect = false) {
+      if (
+        !skipDeselect &&
+        (STATE.mode === "v-line" || STATE.mode === "visual")
+      ) {
         sendKeyEvent("right");
         sendKeyEvent("left");
       }
 
-      mode = "normal";
-      updateModeIndicator(mode);
+      STATE.mode = "normal";
+      updateModeIndicator(STATE.mode);
 
-      replaceCharMode = false;
+      STATE.replaceCharMode = false;
 
       const cursor = GoogleDocs.getCursor();
       if (cursor) {
@@ -311,16 +315,14 @@
     }
 
     function switchModeToInsert() {
-      mode = "insert";
-      updateModeIndicator(mode);
+      STATE.mode = "insert";
+      updateModeIndicator(STATE.mode);
       const cursor = GoogleDocs.getCursor();
       if (cursor) {
         const parent = cursor.parentElement;
         if (parent) parent.classList.add("vim-no-cursor-animation");
       }
     }
-
-    let longStringOp = "";
 
     function goToStartOfLine() {
       sendKeyEvent("home");
@@ -353,7 +355,7 @@
     }
     function goToTop() {
       sendKeyEvent("home", { control: true, shift: true });
-      longStringOp = "";
+      STATE.longStringOp = "";
     }
     function selectToEndOfPara() {
       sendKeyEvent("down", paragraphMods(true));
@@ -394,7 +396,7 @@
         });
       });
     }
-    function runLongStringOp(operation = longStringOp) {
+    function runLongStringOp(operation = STATE.longStringOp) {
       switch (operation) {
         case "c":
           clickMenu(menuItems.cut);
@@ -402,17 +404,16 @@
           break;
         case "d":
           clickMenu(menuItems.cut);
-          mode = "normal";
-          switchModeToNormal();
+          switchModeToNormal(true);
           break;
         case "y":
           clickMenu(menuItems.copy);
           sendKeyEvent("left");
-          switchModeToNormal();
+          switchModeToNormal(true);
           break;
         case "p":
-          clickMenu(menuItems.paste);
-          switchModeToNormal();
+          sendKeyEvent("v", clipboardMods());
+          switchModeToNormal(true);
           break;
         case "v":
           break;
@@ -453,10 +454,10 @@
     function waitForFirstInput(key) {
       switch (key) {
         case "i":
-          mode = "waitForTextObject";
+          STATE.mode = "waitForTextObject";
           break;
         case "a":
-          mode = "waitForTextObject";
+          STATE.mode = "waitForTextObject";
           break;
         case "w":
           selectToEndOfWord();
@@ -476,7 +477,7 @@
           selectToEndOfLine();
           runLongStringOp();
           break;
-        case longStringOp:
+        case STATE.longStringOp:
           goToStartOfLine();
           selectToEndOfLine();
           runLongStringOp();
@@ -498,30 +499,36 @@
           goToEndOfPara(true);
           break;
       }
-      mode = "v-line";
+      STATE.mode = "v-line";
     }
 
     function handleMultipleMotion(key) {
       if (/[0-9]/.test(key)) {
-        multipleMotion.times = Number(String(multipleMotion.times) + key);
+        STATE.multipleMotion.times = Number(
+          String(STATE.multipleMotion.times) + key,
+        );
         return;
       }
-      switch (multipleMotion.mode) {
+      switch (STATE.multipleMotion.mode) {
         case "normal":
-          repeatMotion(handleKeyEventNormal, multipleMotion.times, key);
+          repeatMotion(handleKeyEventNormal, STATE.multipleMotion.times, key);
           break;
         case "v-line":
         case "visual":
-          repeatMotion(handleKeyEventVisualLine, multipleMotion.times, key);
+          repeatMotion(
+            handleKeyEventVisualLine,
+            STATE.multipleMotion.times,
+            key,
+          );
           break;
       }
-      mode = multipleMotion.mode;
+      STATE.mode = STATE.multipleMotion.mode;
     }
 
     function eventHandler(e) {
       if (["Shift", "Meta", "Control", "Alt", ""].includes(e.key)) return;
 
-      if (e.ctrlKey && mode === "normal") {
+      if (e.ctrlKey && STATE.mode === "normal") {
         if (e.key === "u") {
           e.preventDefault();
           sendKeyEvent("pageup");
@@ -539,15 +546,15 @@
         }
       }
 
-      if (e.ctrlKey && mode === "insert" && e.key === "o") {
+      if (e.ctrlKey && STATE.mode === "insert" && e.key === "o") {
         e.preventDefault();
         e.stopImmediatePropagation();
         switchModeToNormal();
-        tempnormal = true;
+        STATE.tempNormal = true;
         return;
       }
 
-      if (mode === "insert" && replaceCharMode) {
+      if (STATE.mode === "insert" && STATE.replaceCharMode) {
         if (e.key === "Escape") {
           e.preventDefault();
           switchModeToNormal();
@@ -570,16 +577,16 @@
 
       if (e.key === "Escape") {
         e.preventDefault();
-        if (mode === "v-line" || mode === "visual") {
+        if (STATE.search.active) closeFindWindow();
+        if (STATE.mode === "v-line" || STATE.mode === "visual")
           sendKeyEvent("right");
-        }
         switchModeToNormal();
         return;
       }
 
-      if (mode != "insert") {
+      if (STATE.mode != "insert") {
         e.preventDefault();
-        switch (mode) {
+        switch (STATE.mode) {
           case "normal":
             handleKeyEventNormal(e.key);
             break;
@@ -608,9 +615,9 @@
 
     function handleKeyEventNormal(key) {
       if (/[1-9]/.test(key)) {
-        mode = "multipleMotion";
-        multipleMotion.mode = "normal";
-        multipleMotion.times = Number(key);
+        STATE.mode = "multipleMotion";
+        STATE.multipleMotion.mode = "normal";
+        STATE.multipleMotion.times = Number(key);
         return;
       }
 
@@ -649,8 +656,8 @@
         case "c":
         case "d":
         case "y":
-          longStringOp = key;
-          mode = "waitForFirstInput";
+          STATE.longStringOp = key;
+          STATE.mode = "waitForFirstInput";
           break;
         case "p":
           clickMenu(menuItems.paste);
@@ -694,7 +701,7 @@
           break;
 
         case "r":
-          replaceCharMode = true;
+          STATE.replaceCharMode = true;
           switchModeToInsert();
           break;
 
@@ -707,13 +714,13 @@
         default:
           return;
       }
-      if (tempnormal) {
-        tempnormal = false;
+      if (STATE.tempNormal) {
+        STATE.tempNormal = false;
         if (
-          mode != "visual" &&
-          mode != "v-line" &&
-          mode != "waitForFirstInput" &&
-          mode != "waitForTextObject"
+          STATE.mode != "visual" &&
+          STATE.mode != "v-line" &&
+          STATE.mode != "waitForFirstInput" &&
+          STATE.mode != "waitForTextObject"
         ) {
           switchModeToInsert();
         }
@@ -722,9 +729,9 @@
 
     function handleKeyEventVisualLine(key) {
       if (/[1-9]/.test(key)) {
-        mode = "multipleMotion";
-        multipleMotion.mode = "v-line";
-        multipleMotion.times = Number(key);
+        STATE.mode = "multipleMotion";
+        STATE.multipleMotion.mode = "v-line";
+        STATE.multipleMotion.times = Number(key);
         return;
       }
       switch (key) {
@@ -780,11 +787,11 @@
           break;
         case "i":
         case "a":
-          mode = "waitForVisualInput";
+          STATE.mode = "waitForVisualInput";
           break;
         case "x":
           clickMenu(menuItems.cut);
-          switchModeToNormal();
+          switchModeToNormal(true);
           break;
       }
     }
