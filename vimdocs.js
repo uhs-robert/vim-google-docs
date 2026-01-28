@@ -1,4 +1,4 @@
-// vim-keys-google-docs.js
+// vimdocs.js
 
 // ==UserScript==
 // @name        VimDocs (Vim for Google Docs)
@@ -263,10 +263,10 @@
        */
       initIndicator() {
         // Inject style for disabling cursor animation in insert mode
-        const existingStyle = document.getElementById("vim-docs-style");
+        const existingStyle = document.getElementById("vimdocs-style");
         if (existingStyle) existingStyle.remove();
         const style_el = document.createElement("style");
-        style_el.id = "vim-docs-style";
+        style_el.id = "vimdocs-style";
         style_el.textContent =
           ".vim-no-cursor-animation { animation: none !important; }";
         document.head.appendChild(style_el);
@@ -559,7 +559,6 @@
           Mode.toNormal(true);
           break;
         case "p":
-          sendKeyEvent("v", clipboardMods());
           // sendKeyEvent("v", clipboardMods());
           Mode.toNormal(true);
           break;
@@ -993,7 +992,6 @@
           Mode.current = "waitForFirstInput";
           break;
         case "p":
-          clickMenu(menuItems.paste);
           // sendKeyEvent("v", clipboardMods());
           break;
         case "a":
@@ -1135,7 +1133,6 @@
           sendKeyEvent("right", { shift: true });
           break;
         case "p":
-          clickMenu(menuItems.paste);
           // sendKeyEvent("v", clipboardMods());
           Mode.toNormal(true);
           break;
