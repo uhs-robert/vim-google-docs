@@ -19,6 +19,23 @@
 
   /*
    * ======================================================================================
+   * COLORSCHEME
+   * Set your preferred theme for vim cursor and modes here.
+   * ======================================================================================
+   */
+  const COLORSCHEME = {
+    cursor: "khaki",
+    mode: {
+      normal: { bg: "#1670AD", fg: "white" },
+      insert: { bg: "#2B8A5E", fg: "white" },
+      visual: { bg: "#FFA653", fg: "white" },
+      "v-line": { bg: "#FFA653", fg: "white" },
+      wait: { bg: "indianred", fg: "white" },
+    },
+  };
+
+  /*
+   * ======================================================================================
    * PART 1: INJECTED PAGE SCRIPT
    * This logic runs in the main page context to simulate keystrokes on the Docs iframe.
    * ======================================================================================
@@ -132,6 +149,15 @@
       return { shift, [paragraphModifierKey]: true };
     }
 
+    // Inject style for disabling cursor animation in insert mode
+    const existingStyle = document.getElementById("vim-keys-style");
+    if (existingStyle) existingStyle.remove();
+    const style_el = document.createElement("style");
+    style_el.id = "vim-keys-style";
+    style_el.textContent =
+      ".vim-no-cursor-animation { animation: none !important; }";
+    document.head.appendChild(style_el);
+
     // Mode indicator element (insert, visual, etc.)
     // Remove existing indicator if present to prevent duplicates on re-init
     const existingIndicator = document.getElementById("vim-mode-indicator");
@@ -154,23 +180,26 @@
       modeIndicator.textContent = currentMode.toUpperCase();
       switch (currentMode) {
         case "normal":
-          modeIndicator.style.backgroundColor = "#1a73e8";
-          modeIndicator.style.color = "white";
+          modeIndicator.style.backgroundColor = COLORSCHEME.mode["normal"].bg;
+          modeIndicator.style.color = COLORSCHEME.mode["normal"].fg;
           break;
         case "insert":
-          modeIndicator.style.backgroundColor = "#34a853";
-          modeIndicator.style.color = "white";
+          modeIndicator.style.backgroundColor = COLORSCHEME.mode["insert"].bg;
+          modeIndicator.style.color = COLORSCHEME.mode["insert"].fg;
           break;
         case "visual":
+          modeIndicator.style.backgroundColor = COLORSCHEME.mode["visual"].bg;
+          modeIndicator.style.color = COLORSCHEME.mode["visual"].fg;
+          break;
         case "v-line":
-          modeIndicator.style.backgroundColor = "#fbbc04";
-          modeIndicator.style.color = "black";
+          modeIndicator.style.backgroundColor = COLORSCHEME.mode["v-line"].bg;
+          modeIndicator.style.color = COLORSCHEME.mode["v-line"].fg;
           break;
         case "waitForFirstInput":
         case "waitForSecondInput":
         case "waitForVisualInput":
-          modeIndicator.style.backgroundColor = "#ea4335";
-          modeIndicator.style.color = "white";
+          modeIndicator.style.backgroundColor = COLORSCHEME.mode["wait"].bg;
+          modeIndicator.style.color = COLORSCHEME.mode["wait"].fg;
           break;
       }
     }
@@ -232,7 +261,13 @@
       if (cursor) {
         cursor.style.opacity = 1;
         cursor.style.display = "block";
-        cursor.style.backgroundColor = "black";
+        cursor.style.setProperty(
+          "border-color",
+          COLORSCHEME["cursor"],
+          "important",
+        );
+        const parent = cursor.parentElement;
+        if (parent) parent.classList.remove("vim-no-cursor-animation");
       }
       // Refocus the editor
       setTimeout(() => {
