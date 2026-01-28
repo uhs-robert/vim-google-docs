@@ -5,13 +5,13 @@
 // @namespace   http://tampermonkey.net/
 // @version     1.3.4
 // @description Vim-style keyboard shortcuts for Google Docs. Ported from the DocsKeys extension.
-// @author      tirthd16 (Ported by icemoss)
+// @author      uhs-robert
 // @license     MIT
 // @match       https://docs.google.com/document/*
 // @grant       none
 // @run-at      document-idle
-// @downloadURL https://update.greasyfork.org/scripts/562026/DocsKeys%20%28Vim%20for%20Google%20Docs%29.user.js
-// @updateURL https://update.greasyfork.org/scripts/562026/DocsKeys%20%28Vim%20for%20Google%20Docs%29.meta.js
+// @downloadURL https://update.greasyfork.org/scripts/562026/VimKeys%20%28Vim%20for%20Google%20Docs%29.user.js
+// @updateURL https://update.greasyfork.org/scripts/562026/VimKeys%20%28Vim%20for%20Google%20Docs%29.meta.js
 // ==/UserScript==
 
 (function () {
@@ -79,16 +79,16 @@
    * ======================================================================================
    */
 
-  function initDocsKeys() {
+  function initVimKeys() {
     const iframe = document.querySelector("iframe.docs-texteventtarget-iframe");
 
     if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) {
-      setTimeout(initDocsKeys, 500);
+      setTimeout(initVimKeys, 500);
+
       return;
     }
 
-    console.log("DocsKeys: Initializing...");
-
+    console.debug("VimKeys: Initializing...");
     iframe.contentDocument.addEventListener("keydown", eventHandler, true);
 
     // Helper to get cursor element (may not exist initially or may change)
@@ -134,14 +134,10 @@
 
     // Mode indicator element (insert, visual, etc.)
     // Remove existing indicator if present to prevent duplicates on re-init
-    const existingIndicator = document.getElementById(
-      "docskeys-mode-indicator",
-    );
-    if (existingIndicator) {
-      existingIndicator.remove();
-    }
+    const existingIndicator = document.getElementById("vim-mode-indicator");
+    if (existingIndicator) existingIndicator.remove();
     const modeIndicator = document.createElement("div");
-    modeIndicator.id = "docskeys-mode-indicator";
+    modeIndicator.id = "vim-mode-indicator";
     modeIndicator.style.position = "fixed";
     modeIndicator.style.bottom = "20px";
     modeIndicator.style.right = "20px";
@@ -744,7 +740,7 @@
       el = findMenuItem(menuItem);
       if (!el) {
         if (!silenceWarning)
-          console.error("DocsKeys: Could not find menu item", menuItem.caption);
+          console.error("VimKeys: Could not find menu item", menuItem.caption);
         return null;
       }
       return (menuItemElements[caption] = el);
@@ -794,9 +790,7 @@
       const buttons = Array.from(document.querySelectorAll(".menu-button"));
       const button = buttons.find((el) => el.innerText.trim() === menuCaption);
       if (!button) {
-        console.error(
-          `DocsKeys: Couldn't find top-level button ${menuCaption}`,
-        );
+        console.error(`VimKeys: Couldn't find top-level button ${menuCaption}`);
         return;
       }
       simulateClick(button);
@@ -808,11 +802,8 @@
 
   function waitForDocs() {
     const editor = document.querySelector(".docs-texteventtarget-iframe");
-    if (editor) {
-      initDocsKeys();
-    } else {
-      setTimeout(waitForDocs, 500);
-    }
+    if (editor) initVimKeys();
+    else setTimeout(waitForDocs, 500);
   }
 
   waitForDocs();
