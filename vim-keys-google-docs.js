@@ -905,8 +905,12 @@
           goToStartOfWord();
           break;
         case "e":
+          goToEndOfWord();
+          break;
         case "w":
           goToEndOfWord();
+          goToEndOfWord();
+          goToStartOfWord();
           break;
         case "g":
           sendKeyEvent("home", { control: true });
@@ -943,6 +947,11 @@
           break;
         case "A":
           goToEndOfLine();
+          Mode.toInsert();
+          break;
+        case "C":
+          selectToEndOfLine();
+          clickMenu(menuItems.cut);
           Mode.toInsert();
           break;
         case "v":
