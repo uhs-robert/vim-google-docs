@@ -15,7 +15,7 @@
 // ==/UserScript==
 
 // TODO: Add more `:` commands (e.g., :q, :run (open alt+/), :$s/text/replace/gc etc.)
-// TODO: `g` to trigger go options: gg=to top, gf=follow link (), gm=open menu (alt+/), gu=lowercase, gU=uppercase g[=previousTab, g]=nextTab, gh=showHelp)
+// TODO: `g` remaining options: gu=lowercase, gU=uppercase, g[=previousTab, g]=nextTab
 
 /** TODO:
  * Good candidates for modularization:
@@ -226,6 +226,7 @@
       nine: 57,
       minus: 189,
       equal: 187,
+      slash: 191,
       bracketLeft: 219,
       bracketRight: 221,
     };
@@ -420,6 +421,7 @@
           this.current === "waitForIndent" ||
           this.current === "waitForOutdent" ||
           this.current === "waitForZoom" ||
+          this.current === "waitForGo" ||
           this.current === "multipleMotion"
         );
       },
@@ -1073,6 +1075,9 @@
           case "waitForZoom":
             handleZoom(e.key);
             break;
+          case "waitForGo":
+            handleGo(e.key);
+            break;
         }
       }
     }
@@ -1293,6 +1298,32 @@
     }
 
     /**
+     * Handles go commands (vim `g` prefix).
+     * @param {string} key - The key pressed after `g`.
+     */
+    function handleGo(key) {
+      switch (key) {
+        case "g":
+          // Go to top of document (gg)
+          goToTop();
+          break;
+        case "f":
+          // Follow link at cursor (Alt + Enter)
+          sendKeyEvent("enter", { alt: true });
+          break;
+        case "m":
+          // Open menu search (Alt + /)
+          sendKeyEvent("slash", { alt: true });
+          break;
+        case "h":
+          // Show help
+          Command.showHelp();
+          break;
+      }
+      Mode.toNormal();
+    }
+
+    /**
      * Handles key events in normal mode.
      * @param {string} key - The key pressed.
      */
@@ -1346,8 +1377,8 @@
           goToStartOfWord();
           break;
         case "g":
-          sendKeyEvent("home", { control: true });
-          break;
+          Mode.current = "waitForGo";
+          return;
         case "G":
           sendKeyEvent("end", { control: true });
           break;
