@@ -129,6 +129,10 @@
    * ======================================================================================
    */
 
+  /**
+   * Initializes VimKeys functionality once the Google Docs editor iframe is ready.
+   * Sets up event listeners, state management, and UI elements for vim emulation.
+   */
   function initVimKeys() {
     const iframe = document.querySelector("iframe.docs-texteventtarget-iframe");
 
@@ -140,22 +144,6 @@
 
     console.debug("VimKeys: Initializing...");
     iframe.contentDocument.addEventListener("keydown", eventHandler, true);
-    const STATE = {
-      mode: "normal",
-      tempNormal: false,
-      replaceCharMode: false,
-      search: {
-        active: false,
-        forward: true, // true for f and /, false for F
-        isCharSearch: false, // true for f/F, false for /
-        lastSearch: null,
-      },
-      multipleMotion: {
-        times: 0,
-        mode: "normal",
-      },
-      longStringOp: "",
-    };
 
     const isMac = /Mac/.test(navigator.platform || navigator.userAgent);
 
@@ -178,69 +166,31 @@
     const wordModifierKey = isMac ? "alt" : "control";
     const paragraphModifierKey = isMac ? "alt" : "control";
 
+    /**
+     * Returns modifier keys for word-based navigation.
+     * @param {boolean} [shift=false] - Whether to include shift for selection.
+     * @returns {Object} Modifier key object for word navigation.
+     */
     function wordMods(shift = false) {
       return { shift, [wordModifierKey]: true };
     }
 
+    /**
+     * Returns modifier keys for paragraph-based navigation.
+     * @param {boolean} [shift=false] - Whether to include shift for selection.
+     * @returns {Object} Modifier key object for paragraph navigation.
+     */
     function paragraphMods(shift = false) {
       return { shift, [paragraphModifierKey]: true };
     }
 
-    // Inject style for disabling cursor animation in insert mode
-    const existingStyle = document.getElementById("vim-keys-style");
-    if (existingStyle) existingStyle.remove();
-    const style_el = document.createElement("style");
-    style_el.id = "vim-keys-style";
-    style_el.textContent =
-      ".vim-no-cursor-animation { animation: none !important; }";
-    document.head.appendChild(style_el);
-
-    // Mode indicator element (insert, visual, etc.)
-    // Remove existing indicator if present to prevent duplicates on re-init
-    const existingIndicator = document.getElementById("vim-mode-indicator");
-    if (existingIndicator) existingIndicator.remove();
-    const modeIndicator = document.createElement("div");
-    modeIndicator.id = "vim-mode-indicator";
-    modeIndicator.style.position = "fixed";
-    modeIndicator.style.bottom = "20px";
-    modeIndicator.style.right = "20px";
-    modeIndicator.style.padding = "8px 16px";
-    modeIndicator.style.borderRadius = "4px";
-    modeIndicator.style.fontFamily =
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    modeIndicator.style.fontSize = "14px";
-    modeIndicator.style.fontWeight = "500";
-    modeIndicator.style.zIndex = "9999";
-    document.body.appendChild(modeIndicator);
-
-    function updateModeIndicator(currentMode) {
-      modeIndicator.textContent = currentMode.toUpperCase();
-      switch (currentMode) {
-        case "normal":
-          modeIndicator.style.backgroundColor = COLORSCHEME.mode["normal"].bg;
-          modeIndicator.style.color = COLORSCHEME.mode["normal"].fg;
-          break;
-        case "insert":
-          modeIndicator.style.backgroundColor = COLORSCHEME.mode["insert"].bg;
-          modeIndicator.style.color = COLORSCHEME.mode["insert"].fg;
-          break;
-        case "visual":
-          modeIndicator.style.backgroundColor = COLORSCHEME.mode["visual"].bg;
-          modeIndicator.style.color = COLORSCHEME.mode["visual"].fg;
-          break;
-        case "v-line":
-          modeIndicator.style.backgroundColor = COLORSCHEME.mode["v-line"].bg;
-          modeIndicator.style.color = COLORSCHEME.mode["v-line"].fg;
-          break;
-        case "waitForFirstInput":
-        case "waitForSecondInput":
-        case "waitForVisualInput":
-          modeIndicator.style.backgroundColor = COLORSCHEME.mode["wait"].bg;
-          modeIndicator.style.color = COLORSCHEME.mode["wait"].fg;
-          break;
-      }
     }
 
+    /**
+     * Dispatches a simulated key event to the Google Docs editor.
+     * @param {string} key - The key name from keyCodes map.
+     * @param {Object} [mods={}] - Modifier keys (shift, control, alt, meta).
+     */
     function sendKeyEvent(key, mods = {}) {
       const keyCode = keyCodes[key];
       const defaultMods = {
@@ -264,65 +214,195 @@
       );
     }
 
-    function repeatMotion(motion, times, key) {
-      for (let i = 0; i < times; i++) motion(key);
-    }
+    /*
+     * ======================================================================================
+     * MODE MANAGEMENT
+     * Centralizes all vim mode state and transitions.
+     * ======================================================================================
+     */
+    const Mode = {
+      current: "normal",
+      temp_normal: false,
+      replace_char: false,
+      indicator: null,
 
-    function switchModeToVisual() {
-      STATE.mode = "visual";
-      updateModeIndicator(STATE.mode);
-      sendKeyEvent("right", { shift: true });
-    }
+      /**
+       * Initializes the mode indicator UI element.
+       */
+      initIndicator() {
+        // Inject style for disabling cursor animation in insert mode
+        const existingStyle = document.getElementById("vim-keys-style");
+        if (existingStyle) existingStyle.remove();
+        const style_el = document.createElement("style");
+        style_el.id = "vim-keys-style";
+        style_el.textContent =
+          ".vim-no-cursor-animation { animation: none !important; }";
+        document.head.appendChild(style_el);
 
-    function switchModeToVisualLine() {
-      STATE.mode = "v-line";
-      updateModeIndicator(STATE.mode);
-      goToStartOfLine();
-      selectToEndOfLine();
-    }
+        // Remove existing indicator if present to prevent duplicates on re-init
+        const existingIndicator = document.getElementById("vim-mode-indicator");
+        if (existingIndicator) existingIndicator.remove();
 
-    function switchModeToNormal(skipDeselect = false) {
-      if (
-        !skipDeselect &&
-        (STATE.mode === "v-line" || STATE.mode === "visual")
-      ) {
-        sendKeyEvent("right");
-        sendKeyEvent("left");
-      }
+        // Stylize indicator
+        this.indicator = document.createElement("div");
+        this.indicator.id = "vim-mode-indicator";
+        this.indicator.style.position = "fixed";
+        this.indicator.style.bottom = "20px";
+        this.indicator.style.right = "20px";
+        this.indicator.style.padding = "8px 16px";
+        this.indicator.style.borderRadius = "4px";
+        this.indicator.style.fontFamily =
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        this.indicator.style.fontSize = "14px";
+        this.indicator.style.fontWeight = "500";
+        this.indicator.style.zIndex = "9999";
+        document.body.appendChild(this.indicator);
+      },
 
-      STATE.mode = "normal";
-      updateModeIndicator(STATE.mode);
+      /**
+       * Updates the mode indicator UI with the current mode.
+       */
+      updateIndicator() {
+        if (!this.indicator) return;
+        this.indicator.textContent = this.current.toUpperCase();
 
-      STATE.replaceCharMode = false;
-
-      const cursor = GoogleDocs.getCursor();
-      if (cursor) {
-        cursor.style.opacity = 1;
-        cursor.style.display = "block";
-        cursor.style.setProperty(
-          "border-color",
-          COLORSCHEME["cursor"],
-          "important",
-        );
-        const parent = cursor.parentElement;
-        if (parent) parent.classList.remove("vim-no-cursor-animation");
-      }
-      // Refocus the editor
-      setTimeout(() => {
-        if (iframe && iframe.contentDocument && iframe.contentDocument.body) {
-          iframe.contentDocument.body.focus();
+        let color_key;
+        switch (this.current) {
+          case "normal":
+          case "insert":
+          case "visual":
+          case "v-line":
+            color_key = this.current;
+            break;
+          case "waitForFirstInput":
+          case "waitForSecondInput":
+          case "waitForVisualInput":
+          case "waitForTextObject":
+          case "waitForFindChar":
+          case "multipleMotion":
+            color_key = "wait";
+            break;
+          default:
+            color_key = "normal";
         }
-      }, 0);
-    }
 
-    function switchModeToInsert() {
-      STATE.mode = "insert";
-      updateModeIndicator(STATE.mode);
-      const cursor = GoogleDocs.getCursor();
-      if (cursor) {
-        const parent = cursor.parentElement;
-        if (parent) parent.classList.add("vim-no-cursor-animation");
-      }
+        this.indicator.style.backgroundColor = COLORSCHEME.mode[color_key].bg;
+        this.indicator.style.color = COLORSCHEME.mode[color_key].fg;
+      },
+
+      /**
+       * Sets the current mode and updates the indicator.
+       * @param {string} mode - The mode to switch to.
+       */
+      set(mode) {
+        this.current = mode;
+        this.updateIndicator();
+      },
+
+      /**
+       * Checks if the current mode is one of the visual modes.
+       * @returns {boolean} True if in visual or v-line mode.
+       */
+      isVisual() {
+        return this.current === "visual" || this.current === "v-line";
+      },
+
+      /**
+       * Checks if the current mode is one of the wait modes.
+       * @returns {boolean} True if waiting for additional input.
+       */
+      isWaiting() {
+        return (
+          this.current === "waitForFirstInput" ||
+          this.current === "waitForSecondInput" ||
+          this.current === "waitForVisualInput" ||
+          this.current === "waitForTextObject" ||
+          this.current === "waitForFindChar" ||
+          this.current === "multipleMotion"
+        );
+      },
+
+      /**
+       * Switches to visual (character) selection mode.
+       */
+      toVisual() {
+        this.set("visual");
+        sendKeyEvent("right", { shift: true });
+      },
+
+      /**
+       * Switches to visual line selection mode.
+       */
+      toVisualLine() {
+        this.set("v-line");
+        goToStartOfLine();
+        selectToEndOfLine();
+      },
+
+      /**
+       * Switches to normal mode.
+       * @param {boolean} [skip_deselect=false] - Skip deselection (used after cut/copy).
+       */
+      toNormal(skip_deselect = false) {
+        if (!skip_deselect && this.isVisual()) {
+          sendKeyEvent("right");
+          sendKeyEvent("left");
+        }
+
+        this.set("normal");
+        this.replace_char = false;
+
+        const cursor = GoogleDocs.getCursor();
+        if (cursor) {
+          cursor.style.opacity = 1;
+          cursor.style.display = "block";
+          cursor.style.setProperty(
+            "border-color",
+            COLORSCHEME["cursor"],
+            "important",
+          );
+          const parent = cursor.parentElement;
+          if (parent) parent.classList.remove("vim-no-cursor-animation");
+        }
+
+        // Refocus the editor
+        setTimeout(() => {
+          if (iframe && iframe.contentDocument && iframe.contentDocument.body) {
+            iframe.contentDocument.body.focus();
+          }
+        }, 0);
+      },
+
+      /**
+       * Switches to insert mode.
+       */
+      toInsert() {
+        this.set("insert");
+        const cursor = GoogleDocs.getCursor();
+        if (cursor) {
+          const parent = cursor.parentElement;
+          if (parent) parent.classList.add("vim-no-cursor-animation");
+        }
+      },
+    };
+
+    // Initialize the mode indicator
+    Mode.initIndicator();
+
+    const STATE = {
+      search: {
+        active: false,
+        forward: true, // true for f and /, false for F
+        isCharSearch: false, // true for f/F, false for /
+        lastSearch: null,
+      },
+      multipleMotion: {
+        times: 0,
+        mode: "normal",
+      },
+      longStringOp: "",
+    };
+
     }
 
     function goToStartOfLine() {
@@ -372,18 +452,18 @@
       goToStartOfLine();
       sendKeyEvent("enter");
       sendKeyEvent("up");
-      switchModeToInsert();
+      Mode.toInsert();
     }
     function addLineBottom() {
       goToEndOfLine();
       sendKeyEvent("enter");
-      switchModeToInsert();
+      Mode.toInsert();
     }
     function handleAppend() {
       const cursor = GoogleDocs.getCursor();
       if (!cursor) {
         sendKeyEvent("right");
-        switchModeToInsert();
+        Mode.toInsert();
         return;
       }
       const originalTop = cursor.getBoundingClientRect().top;
@@ -393,7 +473,7 @@
         requestAnimationFrame(() => {
           const newTop = cursor.getBoundingClientRect().top;
           if (newTop > originalTop + 10) sendKeyEvent("left");
-          switchModeToInsert();
+          Mode.toInsert();
         });
       });
     }
@@ -401,20 +481,20 @@
       switch (operation) {
         case "c":
           clickMenu(menuItems.cut);
-          switchModeToInsert();
+          Mode.toInsert();
           break;
         case "d":
           clickMenu(menuItems.cut);
-          switchModeToNormal(true);
+          Mode.toNormal(true);
           break;
         case "y":
           clickMenu(menuItems.copy);
           sendKeyEvent("left");
-          switchModeToNormal(true);
+          Mode.toNormal(true);
           break;
         case "p":
           sendKeyEvent("v", clipboardMods());
-          switchModeToNormal(true);
+          Mode.toNormal(true);
           break;
         case "v":
           break;
@@ -435,7 +515,7 @@
           waitForFirstInput(key);
           break;
         default:
-          switchModeToNormal();
+          Mode.toNormal();
           break;
       }
     }
@@ -447,7 +527,7 @@
           runLongStringOp();
           break;
         default:
-          switchModeToNormal();
+          Mode.toNormal();
           break;
       }
     }
@@ -455,10 +535,10 @@
     function waitForFirstInput(key) {
       switch (key) {
         case "i":
-          STATE.mode = "waitForTextObject";
+          Mode.current = "waitForTextObject";
           break;
         case "a":
-          STATE.mode = "waitForTextObject";
+          Mode.current = "waitForTextObject";
           break;
         case "w":
           selectToEndOfWord();
@@ -484,7 +564,7 @@
           runLongStringOp();
           break;
         default:
-          switchModeToNormal();
+          Mode.toNormal();
       }
     }
 
@@ -500,7 +580,7 @@
           goToEndOfPara(true);
           break;
       }
-      STATE.mode = "v-line";
+      Mode.current = "v-line";
     }
 
     function handleMultipleMotion(key) {
@@ -523,13 +603,13 @@
           );
           break;
       }
-      STATE.mode = STATE.multipleMotion.mode;
+      Mode.current = STATE.multipleMotion.mode;
     }
 
     function eventHandler(e) {
       if (["Shift", "Meta", "Control", "Alt", ""].includes(e.key)) return;
 
-      if (e.ctrlKey && STATE.mode === "normal") {
+      if (e.ctrlKey && Mode.current === "normal") {
         if (e.key === "u") {
           e.preventDefault();
           sendKeyEvent("pageup");
@@ -547,18 +627,18 @@
         }
       }
 
-      if (e.ctrlKey && STATE.mode === "insert" && e.key === "o") {
+      if (e.ctrlKey && Mode.current === "insert" && e.key === "o") {
         e.preventDefault();
         e.stopImmediatePropagation();
-        switchModeToNormal();
-        STATE.tempNormal = true;
+        Mode.toNormal();
+        Mode.temp_normal = true;
         return;
       }
 
-      if (STATE.mode === "insert" && STATE.replaceCharMode) {
+      if (Mode.current === "insert" && Mode.replace_char) {
         if (e.key === "Escape") {
           e.preventDefault();
-          switchModeToNormal();
+          Mode.toNormal();
           return;
         }
         if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
@@ -567,7 +647,7 @@
           // Use requestAnimationFrame to wait for delete to process
           requestAnimationFrame(() => {
             sendKeyEvent("left");
-            switchModeToNormal();
+            Mode.toNormal();
           });
 
           return;
@@ -579,15 +659,15 @@
       if (e.key === "Escape") {
         e.preventDefault();
         if (STATE.search.active) closeFindWindow();
-        if (STATE.mode === "v-line" || STATE.mode === "visual")
+        if (Mode.current === "v-line" || Mode.current === "visual")
           sendKeyEvent("right");
-        switchModeToNormal();
+        Mode.toNormal();
         return;
       }
 
-      if (STATE.mode != "insert") {
+      if (Mode.current != "insert") {
         e.preventDefault();
-        switch (STATE.mode) {
+        switch (Mode.current) {
           case "normal":
             handleKeyEventNormal(e.key);
             break;
@@ -625,7 +705,7 @@
         if (editorActiveEl && typeof editorActiveEl.focus === "function") {
           editorActiveEl.focus();
         }
-        switchModeToNormal();
+        Mode.toNormal();
       }, 50);
     }
 
@@ -644,7 +724,7 @@
 
       STATE.search.active = true;
       STATE.search.isCharSearch = true;
-      STATE.mode = "normal";
+      Mode.current = "normal";
     }
 
     /**
@@ -714,7 +794,7 @@
 
     function handleKeyEventNormal(key) {
       if (/[1-9]/.test(key)) {
-        STATE.mode = "multipleMotion";
+        Mode.current = "multipleMotion";
         STATE.multipleMotion.mode = "normal";
         STATE.multipleMotion.times = Number(key);
         return;
@@ -767,7 +847,7 @@
         case "d":
         case "y":
           STATE.longStringOp = key;
-          STATE.mode = "waitForFirstInput";
+          Mode.current = "waitForFirstInput";
           break;
         case "p":
           clickMenu(menuItems.paste);
@@ -776,7 +856,7 @@
           handleAppend();
           break;
         case "i":
-          switchModeToInsert();
+          Mode.toInsert();
           break;
         case "^":
         case "_":
@@ -788,17 +868,17 @@
           break;
         case "I":
           goToStartOfLine();
-          switchModeToInsert();
+          Mode.toInsert();
           break;
         case "A":
           goToEndOfLine();
-          switchModeToInsert();
+          Mode.toInsert();
           break;
         case "v":
-          switchModeToVisual();
+          Mode.toVisual();
           break;
         case "V":
-          switchModeToVisualLine();
+          Mode.toVisualLine();
           break;
         case "o":
           addLineBottom();
@@ -811,8 +891,8 @@
           break;
 
         case "r":
-          STATE.replaceCharMode = true;
-          switchModeToInsert();
+          Mode.replace_char = true;
+          Mode.toInsert();
           break;
 
         case "f":
@@ -820,7 +900,7 @@
             sendKeyEvent("g", { control: true, shift: !STATE.search.forward });
           } else {
             STATE.search.forward = true;
-            STATE.mode = "waitForFindChar";
+            Mode.current = "waitForFindChar";
           }
           return;
         case "F":
@@ -828,7 +908,7 @@
             sendKeyEvent("g", { control: true, shift: STATE.search.forward });
           } else {
             STATE.search.forward = false;
-            STATE.mode = "waitForFindChar";
+            Mode.current = "waitForFindChar";
           }
           return;
         case "/":
@@ -860,22 +940,22 @@
         default:
           return;
       }
-      if (STATE.tempNormal) {
-        STATE.tempNormal = false;
+      if (Mode.temp_normal) {
+        Mode.temp_normal = false;
         if (
-          STATE.mode != "visual" &&
-          STATE.mode != "v-line" &&
-          STATE.mode != "waitForFirstInput" &&
-          STATE.mode != "waitForTextObject"
+          Mode.current != "visual" &&
+          Mode.current != "v-line" &&
+          Mode.current != "waitForFirstInput" &&
+          Mode.current != "waitForTextObject"
         ) {
-          switchModeToInsert();
+          Mode.toInsert();
         }
       }
     }
 
     function handleKeyEventVisualLine(key) {
       if (/[1-9]/.test(key)) {
-        STATE.mode = "multipleMotion";
+        Mode.current = "multipleMotion";
         STATE.multipleMotion.mode = "v-line";
         STATE.multipleMotion.times = Number(key);
         return;
@@ -897,7 +977,7 @@
           break;
         case "p":
           clickMenu(menuItems.paste);
-          switchModeToNormal();
+          Mode.toNormal(true);
           break;
         case "}":
           goToEndOfPara(true);
@@ -933,11 +1013,11 @@
           break;
         case "i":
         case "a":
-          STATE.mode = "waitForVisualInput";
+          Mode.current = "waitForVisualInput";
           break;
         case "x":
           clickMenu(menuItems.cut);
-          switchModeToNormal(true);
+          Mode.toNormal(true);
           break;
       }
     }
@@ -1021,9 +1101,10 @@
       simulateClick(button);
     }
 
-    switchModeToNormal();
+    Mode.toNormal();
   }
 
+  /** Waits for Google Docs editor to be ready, then initializes VimKeys. */
   function waitForDocs() {
     const editor = document.querySelector(".docs-texteventtarget-iframe");
     if (editor) initVimKeys();
