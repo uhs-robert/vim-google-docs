@@ -64,11 +64,37 @@
    * ======================================================================================
    */
   const GoogleDocs = {
+    last_active_element: null,
+
     getCursor: () => {
       return document.getElementById("kix-current-user-cursor-caret") || null;
     },
     getFindWindow: () => {
       return document.getElementById("docs-findbar-id") || null;
+    },
+    getEditorIframe: () => {
+      return document.querySelector("iframe.docs-texteventtarget-iframe");
+    },
+    saveActiveElement: () => {
+      const iframe = GoogleDocs.getEditorIframe();
+      GoogleDocs.last_active_element = iframe?.contentDocument?.activeElement;
+    },
+    restoreFocus: (callback) => {
+      setTimeout(() => {
+        if (
+          GoogleDocs.last_active_element &&
+          typeof GoogleDocs.last_active_element.focus === "function"
+        ) {
+          GoogleDocs.last_active_element.focus();
+        }
+        if (callback) callback();
+      }, 50);
+    },
+    focusEditor: () => {
+      const iframe = GoogleDocs.getEditorIframe();
+      if (iframe && iframe.contentDocument && iframe.contentDocument.body) {
+        iframe.contentDocument.body.focus();
+      }
     },
   };
 
@@ -397,11 +423,8 @@
           if (parent) parent.classList.remove("vim-no-cursor-animation");
         }
 
-        // Refocus the editor
         setTimeout(() => {
-          if (iframe && iframe.contentDocument && iframe.contentDocument.body) {
-            iframe.contentDocument.body.focus();
-          }
+          GoogleDocs.focusEditor();
         }, 0);
       },
 
@@ -789,18 +812,12 @@
 
     /**
      * Hides the Google Docs find bar and refocuses the editor.
-     * @param {Element} editorActiveEl - The editor element to refocus.
      */
-    function hideFindWindowAndRefocus(editorActiveEl) {
+    function hideFindWindowAndRefocus() {
       const findWindow = GoogleDocs.getFindWindow();
       if (findWindow) findWindow.style.display = "none";
 
-      setTimeout(() => {
-        if (editorActiveEl && typeof editorActiveEl.focus === "function") {
-          editorActiveEl.focus();
-        }
-        Mode.toNormal();
-      }, 50);
+      GoogleDocs.restoreFocus(() => Mode.toNormal());
     }
 
     /**
@@ -808,7 +825,7 @@
      * @param {string} key - The character to search for.
      */
     function handleFindChar(key) {
-      const editorActiveEl = iframe.contentDocument?.activeElement;
+      GoogleDocs.saveActiveElement();
       sendKeyEvent("f", { control: true });
 
       setTimeout(() => {
@@ -816,7 +833,7 @@
         if (activeEl && activeEl.tagName === "INPUT") {
           activeEl.value = key;
           activeEl.dispatchEvent(new Event("input", { bubbles: true }));
-          hideFindWindowAndRefocus(editorActiveEl);
+          hideFindWindowAndRefocus();
         }
       }, 100);
 
@@ -833,7 +850,7 @@
      * @param {string|null} [text=null] - Pre-fill search text for repeat searches. If null, waits for user input.
      */
     function handleSlashSearch(forward = true, text = null) {
-      const editorActiveEl = iframe.contentDocument?.activeElement;
+      GoogleDocs.saveActiveElement();
       sendKeyEvent("f", { control: true });
       STATE.search.forward = forward;
       STATE.search.active = true;
@@ -847,7 +864,7 @@
             findInput.value = text;
             findInput.dispatchEvent(new Event("input", { bubbles: true }));
             STATE.search.lastSearch = text;
-            hideFindWindowAndRefocus(editorActiveEl);
+            hideFindWindowAndRefocus();
           } else {
             // Wait for user to type and press Enter
             const handleEnter = (e) => {
@@ -857,7 +874,7 @@
                 e.stopImmediatePropagation();
                 findInput.removeEventListener("keydown", handleEnter, true);
                 STATE.search.lastSearch = findInput.value;
-                hideFindWindowAndRefocus(editorActiveEl);
+                hideFindWindowAndRefocus();
               }
             };
             findInput.addEventListener("keydown", handleEnter, true);
@@ -872,7 +889,7 @@
      * @param {boolean} [forward=true] - Search direction: true for forward (*), false for backward (#).
      */
     function handleStarSearch(forward = true) {
-      const editorActiveEl = iframe.contentDocument?.activeElement;
+      GoogleDocs.saveActiveElement();
       selectInnerWord();
 
       setTimeout(() => {
@@ -894,7 +911,7 @@
             if (activeEl && activeEl.tagName === "INPUT") {
               activeEl.value = selectedText;
               activeEl.dispatchEvent(new Event("input", { bubbles: true }));
-              hideFindWindowAndRefocus(editorActiveEl);
+              hideFindWindowAndRefocus();
             }
           }, 100);
         }
