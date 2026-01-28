@@ -647,6 +647,47 @@
       STATE.mode = "normal";
     }
 
+    /**
+     * Handles `/` and `?` search commands.
+     * Opens Google Docs find dialog and either waits for user input or pre-fills
+     * with provided text for repeat searches (n/N).
+     * @param {boolean} [forward=true] - Search direction: true for forward (/), false for backward (?).
+     * @param {string|null} [text=null] - Pre-fill search text for repeat searches. If null, waits for user input.
+     */
+    function handleSlashSearch(forward = true, text = null) {
+      const editorActiveEl = iframe.contentDocument?.activeElement;
+      sendKeyEvent("f", { control: true });
+      STATE.search.forward = forward;
+      STATE.search.active = true;
+      STATE.search.isCharSearch = false;
+
+      setTimeout(() => {
+        const findInput = document.activeElement;
+        if (findInput && findInput.tagName === "INPUT") {
+          if (text) {
+            // Pre-fill text and immediately hide
+            findInput.value = text;
+            findInput.dispatchEvent(new Event("input", { bubbles: true }));
+            STATE.search.lastSearch = text;
+            hideFindWindowAndRefocus(editorActiveEl);
+          } else {
+            // Wait for user to type and press Enter
+            const handleEnter = (e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                findInput.removeEventListener("keydown", handleEnter, true);
+                STATE.search.lastSearch = findInput.value;
+                hideFindWindowAndRefocus(editorActiveEl);
+              }
+            };
+            findInput.addEventListener("keydown", handleEnter, true);
+          }
+        }
+      }, 100);
+    }
+
     function closeFindWindow() {
       const find_window = GoogleDocs.getFindWindow();
       if (find_window && find_window.style.display === "none") {
@@ -791,8 +832,25 @@
           }
           return;
         case "/":
-          clickMenu(menuItems.find);
-          break;
+          handleSlashSearch(true);
+          return;
+        case "?":
+          handleSlashSearch(false);
+          return;
+        case "n":
+          if (STATE.search.active && !STATE.search.isCharSearch) {
+            sendKeyEvent("g", { control: true, shift: !STATE.search.forward });
+          } else if (!STATE.search.active && STATE.search.lastSearch) {
+            handleSlashSearch(true, STATE.search.lastSearch);
+          }
+          return;
+        case "N":
+          if (STATE.search.active && !STATE.search.isCharSearch) {
+            sendKeyEvent("g", { control: true, shift: STATE.search.forward });
+          } else if (!STATE.search.active && STATE.search.lastSearch) {
+            handleSlashSearch(false, STATE.search.lastSearch);
+          }
+          return;
         case "x":
           sendKeyEvent("delete");
           break;
