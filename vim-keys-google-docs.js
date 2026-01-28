@@ -834,6 +834,41 @@
       }, 100);
     }
 
+    /**
+     * Handles vim-style * and # search commands.
+     * Selects the word under cursor and searches for it in the document.
+     * @param {boolean} [forward=true] - Search direction: true for forward (*), false for backward (#).
+     */
+    function handleStarSearch(forward = true) {
+      const editorActiveEl = iframe.contentDocument?.activeElement;
+      selectInnerWord();
+
+      setTimeout(() => {
+        // Get selection from iframe
+        const selection =
+          iframe.contentWindow?.getSelection() || window.getSelection();
+        const selectedText = selection ? selection.toString().trim() : "";
+        sendKeyEvent("right"); // Deselect
+
+        // Open find dialog, simulate search
+        if (selectedText) {
+          sendKeyEvent("f", { control: true });
+          STATE.search.forward = forward;
+          STATE.search.active = true;
+          STATE.search.isCharSearch = false;
+
+          setTimeout(() => {
+            const activeEl = document.activeElement;
+            if (activeEl && activeEl.tagName === "INPUT") {
+              activeEl.value = selectedText;
+              activeEl.dispatchEvent(new Event("input", { bubbles: true }));
+              hideFindWindowAndRefocus(editorActiveEl);
+            }
+          }, 100);
+        }
+      }, 100);
+    }
+
     /** Closes the Google Docs find bar and resets search state. */
     function closeFindWindow() {
       const find_window = GoogleDocs.getFindWindow();
@@ -996,6 +1031,12 @@
           return;
         case "?":
           handleSlashSearch(false);
+          return;
+        case "*":
+          handleStarSearch(true);
+          return;
+        case "#":
+          handleStarSearch(false);
           return;
         case "n":
           if (STATE.search.active && !STATE.search.isCharSearch) {
