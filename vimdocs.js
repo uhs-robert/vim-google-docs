@@ -283,6 +283,35 @@
      * Centralizes all vim mode state and transitions.
      * ======================================================================================
      */
+    /**
+     * StatusLine - Container for the status bar UI at the bottom of the screen.
+     * Other components (Mode, CommandMode) append their elements to this container.
+     */
+    const StatusLine = {
+      container: null,
+
+      /**
+       * Initializes the status line container.
+       */
+      init() {
+        // Remove existing status line if present to prevent duplicates on re-init
+        const existing = document.getElementById("vim-status-line");
+        if (existing) existing.remove();
+
+        this.container = document.createElement("div");
+        this.container.id = "vim-status-line";
+        this.container.style.position = "fixed";
+        this.container.style.bottom = "0px";
+        this.container.style.left = "20px";
+        this.container.style.display = "flex";
+        this.container.style.alignItems = "center";
+        this.container.style.gap = "8px";
+        this.container.style.padding = "8px";
+        this.container.style.zIndex = "9999";
+        document.body.appendChild(this.container);
+      },
+    };
+
     const Mode = {
       current: "normal",
       temp_normal: false,
@@ -290,9 +319,9 @@
       indicator: null,
 
       /**
-       * Initializes the mode indicator UI element.
+       * Initializes the mode indicator element.
        */
-      initIndicator() {
+      init() {
         // Inject style for disabling cursor animation in insert mode
         const existingStyle = document.getElementById("vimdocs-style");
         if (existingStyle) existingStyle.remove();
@@ -302,24 +331,20 @@
           ".vim-no-cursor-animation { animation: none !important; }";
         document.head.appendChild(style_el);
 
-        // Remove existing indicator if present to prevent duplicates on re-init
-        const existingIndicator = document.getElementById("vim-mode-indicator");
-        if (existingIndicator) existingIndicator.remove();
-
-        // Stylize indicator
+        // Create mode indicator
         this.indicator = document.createElement("div");
         this.indicator.id = "vim-mode-indicator";
-        this.indicator.style.position = "fixed";
-        this.indicator.style.bottom = "20px";
-        this.indicator.style.right = "20px";
         this.indicator.style.padding = "8px 16px";
         this.indicator.style.borderRadius = "4px";
+        this.indicator.style.boxSizing = "border-box";
+        this.indicator.style.height = "36px";
+        this.indicator.style.display = "flex";
+        this.indicator.style.alignItems = "center";
         this.indicator.style.fontFamily =
           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         this.indicator.style.fontSize = "14px";
         this.indicator.style.fontWeight = "500";
-        this.indicator.style.zIndex = "9999";
-        document.body.appendChild(this.indicator);
+        StatusLine.container.appendChild(this.indicator);
       },
 
       /**
@@ -446,8 +471,9 @@
       },
     };
 
-    // Initialize the mode indicator
-    Mode.initIndicator();
+    // Initialize status line and its components
+    StatusLine.init();
+    Mode.init();
 
     const STATE = {
       search: {
