@@ -1159,7 +1159,11 @@
             break;
           case Operate.pending:
             Move.toStartOfLine();
-            Select.toEndOfLine();
+            if (Operate.pending === "d" || Operate.pending === "y") {
+              Keys.send("down", { shift: true });
+            } else {
+              Select.toEndOfLine();
+            }
             Operate.run();
             break;
           default:
