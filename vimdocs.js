@@ -16,6 +16,7 @@
 
 // TODO: Add more `:` commands (e.g., :q, :run (open alt+/), :$s/text/replace/gc etc.)
 // TODO: `g` remaining options: gu=lowercase, gU=uppercase, g[=previousTab, g]=nextTab
+// TODO: Add keymap list to the help menu.
 
 (function () {
   "use strict";
@@ -361,7 +362,6 @@
        */
       updateIndicator() {
         if (!this.indicator) return;
-        this.indicator.textContent = this.current.toUpperCase();
 
         let color_key;
         switch (this.current) {
@@ -370,14 +370,20 @@
           case "visual":
           case "v-line":
             color_key = this.current;
+            this.indicator.textContent = this.current.toUpperCase();
             break;
           case "waitForFirstInput":
           case "waitForSecondInput":
           case "waitForVisualInput":
           case "waitForTextObject":
-          case "waitForFindChar":
           case "multipleMotion":
+          case "waitForFindChar":
+          case "waitForIndent":
+          case "waitForOutdent":
+          case "waitForZoom":
+          case "waitForGo":
             color_key = "wait";
+            this.indicator.textContent = "VIM ACTION";
             break;
           default:
             color_key = "normal";
@@ -843,16 +849,16 @@
         const wasForward = Find.is_forward;
         Find.closeFindWindow();
         if (wasTill && !wasForward) {
-            Keys.send("right");
-            Keys.send("right");
-          } else {
-            Keys.send("left");
-            if (wasTill) Keys.send("left");
-          }
+          Keys.send("right");
+          Keys.send("right");
+        } else {
+          Keys.send("left");
+          if (wasTill) Keys.send("left");
         }
       },
 
-      /** Closes the Google Docs find bar and resets search state. */
+      /** Closes the Google Docs find bar and resets search state.
+       */
       closeFindWindow() {
         const find_window = GoogleDocs.getFindWindow();
         if (find_window && find_window.style.display === "none") {
