@@ -458,8 +458,8 @@
        */
       toVisualLine() {
         this.set("v-line");
-        goToStartOfLine();
-        selectToEndOfLine();
+        Move.toStartOfLine();
+        Select.toEndOfLine();
       },
 
       /**
@@ -817,7 +817,7 @@
        */
       handleStarSearch(forward = true) {
         GoogleDocs.saveActiveElement();
-        selectInnerWord();
+        Select.innerWord();
 
         setTimeout(() => {
           // Get selection from iframe
@@ -890,68 +890,87 @@
       for (let i = 0; i < times; i++) motion(key);
     }
 
-    /** Moves cursor to start of current line (vim `0`, `^`, `_`). */
-    function goToStartOfLine() {
-      sendKeyEvent("home");
-    }
-    /** Moves cursor to end of current line (vim `$`). */
-    function goToEndOfLine() {
-      sendKeyEvent("end");
-    }
-    /** Selects from cursor to start of line. */
-    function selectToStartOfLine() {
-      sendKeyEvent("home", { shift: true });
-    }
-    /** Selects from cursor to end of line. */
-    function selectToEndOfLine() {
-      sendKeyEvent("end", { shift: true });
-    }
-    /** Selects from cursor to start of previous word (vim `b` in visual). */
-    function selectToStartOfWord() {
-      sendKeyEvent("left", wordMods(true));
-    }
-    /** Selects from cursor to end of current word (vim `e`/`w` in visual). */
-    function selectToEndOfWord() {
-      sendKeyEvent("right", wordMods(true));
-    }
-    /** Moves cursor to end of current word (vim `e`). */
-    function goToEndOfWord() {
-      sendKeyEvent("right", wordMods());
-    }
-    /** Moves cursor to start of previous word (vim `b`). */
-    function goToStartOfWord() {
-      sendKeyEvent("left", wordMods());
-    }
-    /** Selects the word under cursor (vim `iw` text object). */
-    function selectInnerWord() {
-      sendKeyEvent("left");
-      sendKeyEvent("left", wordMods());
-      sendKeyEvent("right", wordMods(true));
-    }
-    /** Moves cursor to top of document (vim `gg`). */
-    function goToTop() {
-      sendKeyEvent("home", { control: true });
-      STATE.longStringOp = "";
-    }
-    /** Selects from cursor to end of paragraph. */
-    function selectToEndOfPara() {
-      sendKeyEvent("down", paragraphMods(true));
-    }
-    /**
-     * Moves cursor to end of paragraph.
-     * @param {boolean} [shift=false] - Whether to select while moving.
+    /*
+     * ======================================================================================
+     * SELECT
+     * Selection operations: extends the current selection by line, word, or paragraph.
+     * ======================================================================================
      */
-    function goToEndOfPara(shift = false) {
-      sendKeyEvent("down", paragraphMods(shift));
-      sendKeyEvent("right", { shift });
-    }
-    /**
-     * Moves cursor to start of paragraph.
-     * @param {boolean} [shift=false] - Whether to select while moving.
+    const Select = {
+      /** Selects from cursor to start of line. */
+      toStartOfLine() {
+        sendKeyEvent("home", { shift: true });
+      },
+      /** Selects from cursor to end of line. */
+      toEndOfLine() {
+        sendKeyEvent("end", { shift: true });
+      },
+      /** Selects from cursor to start of previous word (vim `b` in visual). */
+      toStartOfWord() {
+        sendKeyEvent("left", wordMods(true));
+      },
+      /** Selects from cursor to end of current word (vim `e`/`w` in visual). */
+      toEndOfWord() {
+        sendKeyEvent("right", wordMods(true));
+      },
+      /** Selects from cursor to end of paragraph. */
+      toEndOfPara() {
+        sendKeyEvent("down", paragraphMods(true));
+      },
+      /** Selects the word under cursor (vim `iw` text object). */
+      innerWord() {
+        sendKeyEvent("left");
+        sendKeyEvent("left", wordMods());
+        sendKeyEvent("right", wordMods(true));
+      },
+    };
+
+    /*
+     * ======================================================================================
+     * MOVE
+     * Cursor movement and selection operations: line, word, paragraph, and document motions.
+     * ======================================================================================
      */
-    function goToStartOfPara(shift = false) {
-      sendKeyEvent("up", paragraphMods(shift));
-    }
+    const Move = {
+      /** Moves cursor to start of current line (vim `0`, `^`, `_`). */
+      toStartOfLine() {
+        sendKeyEvent("home");
+      },
+      /** Moves cursor to end of current line (vim `$`). */
+      toEndOfLine() {
+        sendKeyEvent("end");
+      },
+
+      /** Moves cursor to end of current word (vim `e`). */
+      toEndOfWord() {
+        sendKeyEvent("right", wordMods());
+      },
+      /** Moves cursor to start of previous word (vim `b`). */
+      toStartOfWord() {
+        sendKeyEvent("left", wordMods());
+      },
+
+      /** Moves cursor to top of document (vim `gg`). */
+      toTop() {
+        sendKeyEvent("home", { control: true });
+        STATE.longStringOp = "";
+      },
+      /**
+       * Moves cursor to end of paragraph.
+       * @param {boolean} [shift=false] - Whether to select while moving.
+       */
+      toEndOfPara(shift = false) {
+        sendKeyEvent("down", paragraphMods(shift));
+        sendKeyEvent("right", { shift });
+      },
+      /**
+       * Moves cursor to start of paragraph.
+       * @param {boolean} [shift=false] - Whether to select while moving.
+       */
+      toStartOfPara(shift = false) {
+        sendKeyEvent("up", paragraphMods(shift));
+      },
+    };
 
     /*
      * ======================================================================================
@@ -963,14 +982,14 @@
     const Edit = {
       /** Opens a new line above cursor and enters insert mode (vim `O`). */
       addLineTop() {
-        goToStartOfLine();
+        Move.toStartOfLine();
         sendKeyEvent("enter");
         sendKeyEvent("up");
         Mode.toInsert();
       },
       /** Opens a new line below cursor and enters insert mode (vim `o`). */
       addLineBottom() {
-        goToEndOfLine();
+        Move.toEndOfLine();
         sendKeyEvent("enter");
         Mode.toInsert();
       },
@@ -1079,7 +1098,7 @@
         case "v":
           break;
         case "g":
-          goToTop();
+          Move.toTop();
           break;
       }
     }
@@ -1091,11 +1110,11 @@
     function waitForSecondInput(key) {
       switch (key) {
         case "w":
-          goToStartOfWord();
+          Move.toStartOfWord();
           waitForFirstInput(key);
           break;
         case "p":
-          goToStartOfPara();
+          Move.toStartOfPara();
           waitForFirstInput(key);
           break;
         default:
@@ -1111,7 +1130,7 @@
     function waitForTextObject(key) {
       switch (key) {
         case "w":
-          selectInnerWord();
+          Select.innerWord();
           runLongStringOp();
           break;
         default:
@@ -1133,26 +1152,26 @@
           Mode.current = "waitForTextObject";
           break;
         case "w":
-          selectToEndOfWord();
+          Select.toEndOfWord();
           runLongStringOp();
           break;
         case "p":
-          selectToEndOfPara();
+          Select.toEndOfPara();
           runLongStringOp();
           break;
         case "^":
         case "_":
         case "0":
-          selectToStartOfLine();
+          Select.toStartOfLine();
           runLongStringOp();
           break;
         case "$":
-          selectToEndOfLine();
+          Select.toEndOfLine();
           runLongStringOp();
           break;
         case STATE.longStringOp:
-          goToStartOfLine();
-          selectToEndOfLine();
+          Move.toStartOfLine();
+          Select.toEndOfLine();
           runLongStringOp();
           break;
         default:
@@ -1168,12 +1187,12 @@
       switch (key) {
         case "w":
           sendKeyEvent("left", { control: true });
-          goToStartOfWord();
-          selectToEndOfWord();
+          Move.toStartOfWord();
+          Select.toEndOfWord();
           break;
         case "p":
-          goToStartOfPara();
-          goToEndOfPara(true);
+          Move.toStartOfPara();
+          Move.toEndOfPara(true);
           break;
       }
       Mode.current = "v-line";
@@ -1366,7 +1385,7 @@
       switch (key) {
         case "g":
           // Go to top of document (gg)
-          goToTop();
+          Move.toTop();
           break;
         case "f":
           // Follow link at cursor (Alt + Enter)
@@ -1458,24 +1477,24 @@
           sendKeyEvent("right");
           break;
         case "}":
-          goToEndOfPara();
+          Move.toEndOfPara();
           break;
         case "{":
-          goToStartOfPara();
+          Move.toStartOfPara();
           break;
         case "b":
         case "B":
-          goToStartOfWord();
+          Move.toStartOfWord();
           break;
         case "e":
         case "E":
-          goToEndOfWord();
+          Move.toEndOfWord();
           break;
         case "w":
         case "W":
-          goToEndOfWord();
-          goToEndOfWord();
-          goToStartOfWord();
+          Move.toEndOfWord();
+          Move.toEndOfWord();
+          Move.toStartOfWord();
           break;
         case "g":
           Mode.current = "waitForGo";
@@ -1496,31 +1515,31 @@
           Edit.append();
           break;
         case "A":
-          goToEndOfLine();
+          Move.toEndOfLine();
           Mode.toInsert();
           break;
         case "i":
           Mode.toInsert();
           break;
         case "I":
-          goToStartOfLine();
+          Move.toStartOfLine();
           Mode.toInsert();
           break;
         case "^":
         case "_":
         case "0":
-          goToStartOfLine();
+          Move.toStartOfLine();
           break;
         case "$":
-          goToEndOfLine();
+          Move.toEndOfLine();
           break;
         case "C":
-          selectToEndOfLine();
+          Select.toEndOfLine();
           clickMenu(menuItems.cut);
           Mode.toInsert();
           break;
         case "D":
-          selectToEndOfLine();
+          Select.toEndOfLine();
           clickMenu(menuItems.cut);
           break;
         case "v":
@@ -1686,25 +1705,25 @@
           Mode.toNormal(true);
           break;
         case "}":
-          goToEndOfPara(true);
+          Move.toEndOfPara(true);
           break;
         case "{":
-          goToStartOfPara(true);
+          Move.toStartOfPara(true);
           break;
         case "b":
-          selectToStartOfWord();
+          Select.toStartOfWord();
           break;
         case "e":
         case "w":
-          selectToEndOfWord();
+          Select.toEndOfWord();
           break;
         case "^":
         case "_":
         case "0":
-          selectToStartOfLine();
+          Select.toStartOfLine();
           break;
         case "$":
-          selectToEndOfLine();
+          Select.toEndOfLine();
           break;
         case "G":
           sendKeyEvent("end", { control: true, shift: true });
