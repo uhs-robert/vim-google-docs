@@ -301,8 +301,9 @@
 
     /*
      * ======================================================================================
-     * MODE MANAGEMENT
-     * Centralizes all vim mode state and transitions.
+     * STATUS LINE
+     * Container for the status bar UI at the bottom of the screen.
+     * Other components (Mode, Command) append their elements to this container.
      * ======================================================================================
      */
     /**
@@ -334,6 +335,14 @@
       },
     };
 
+    /**
+     * ======================================================================================
+     * MODE
+     * Manages the current vim mode (normal, insert, visual, v-line) and intermediate
+     * states (waitForFindChar, waitForFirstInput, etc.). Handles mode transitions,
+     * the status-line mode indicator, and cursor style updates.
+     * ======================================================================================
+     */
     const Mode = {
       current: "normal",
       temp_normal: false,
