@@ -207,97 +207,94 @@
     console.debug("VimDocs: Initializing...");
     iframe.contentDocument.addEventListener("keydown", eventHandler, true);
 
-    const isMac = /Mac/.test(navigator.platform || navigator.userAgent);
-
-    const keyCodes = {
-      backspace: 8,
-      enter: 13,
-      space: 32,
-      esc: 27,
-      pageup: 33,
-      pagedown: 34,
-      end: 35,
-      home: 36,
-      left: 37,
-      up: 38,
-      right: 39,
-      down: 40,
-      delete: 46,
-      f: 70,
-      g: 71,
-      v: 86,
-      y: 89,
-      zero: 48,
-      seven: 55,
-      eight: 56,
-      nine: 57,
-      minus: 189,
-      equal: 187,
-      slash: 191,
-      h: 72,
-      n: 78,
-      p: 80,
-      bracketLeft: 219,
-      bracketRight: 221,
-    };
-
-    const wordModifierKey = isMac ? "alt" : "control";
-    const paragraphModifierKey = isMac ? "alt" : "control";
-    const clipboardModifierKey = isMac ? "meta" : "control";
-
-    /**
-     * Returns modifier keys for word-based navigation.
-     * @param {boolean} [shift=false] - Whether to include shift for selection.
-     * @returns {Object} Modifier key object for word navigation.
+    /*
+     * ======================================================================================
+     * KEYS
+     * Key codes, simulated key dispatch, and platform-aware modifier helpers.
+     * ======================================================================================
      */
-    function wordMods(shift = false) {
-      return { shift, [wordModifierKey]: true };
-    }
+    const Keys = (() => {
+      const isMac = /Mac/.test(navigator.platform || navigator.userAgent);
 
-    /**
-     * Returns modifier keys for paragraph-based navigation.
-     * @param {boolean} [shift=false] - Whether to include shift for selection.
-     * @returns {Object} Modifier key object for paragraph navigation.
-     */
-    function paragraphMods(shift = false) {
-      return { shift, [paragraphModifierKey]: true };
-    }
-
-    /**
-     * Returns modifier keys for clipboard operations (copy/paste).
-     * @returns {Object} Modifier key object for clipboard operations.
-     */
-    function clipboardMods() {
-      return { [clipboardModifierKey]: true };
-    }
-
-    /**
-     * Dispatches a simulated key event to the Google Docs editor.
-     * @param {string} key - The key name from keyCodes map.
-     * @param {Object} [mods={}] - Modifier keys (shift, control, alt, meta).
-     */
-    function sendKeyEvent(key, mods = {}) {
-      const keyCode = keyCodes[key];
-      const defaultMods = {
-        shift: false,
-        control: false,
-        alt: false,
-        meta: false,
+      const keyCodes = {
+        backspace: 8,
+        enter: 13,
+        space: 32,
+        esc: 27,
+        pageup: 33,
+        pagedown: 34,
+        end: 35,
+        home: 36,
+        left: 37,
+        up: 38,
+        right: 39,
+        down: 40,
+        delete: 46,
+        f: 70,
+        g: 71,
+        v: 86,
+        y: 89,
+        zero: 48,
+        seven: 55,
+        eight: 56,
+        nine: 57,
+        minus: 189,
+        equal: 187,
+        slash: 191,
+        h: 72,
+        n: 78,
+        p: 80,
+        bracketLeft: 219,
+        bracketRight: 221,
       };
-      const args = { keyCode, mods: { ...defaultMods, ...mods } };
 
-      let detailData = args;
-      // Firefox only
-      if (typeof cloneInto === "function") {
-        detailData = cloneInto(args, window);
-      }
+      const wordModifierKey = isMac ? "alt" : "control";
+      const paragraphModifierKey = isMac ? "alt" : "control";
+      const clipboardModifierKey = isMac ? "meta" : "control";
 
-      window.dispatchEvent(
-        new CustomEvent("doc-keys-simulate-keypress", {
-          detail: detailData,
-        }),
-      );
-    }
+      return {
+        keyCodes,
+
+        /** Returns modifier keys for word-based navigation. */
+        wordMods(shift = false) {
+          return { shift, [wordModifierKey]: true };
+        },
+
+        /** Returns modifier keys for paragraph-based navigation. */
+        paragraphMods(shift = false) {
+          return { shift, [paragraphModifierKey]: true };
+        },
+
+        /** Returns modifier keys for clipboard operations (copy/paste). */
+        clipboardMods() {
+          return { [clipboardModifierKey]: true };
+        },
+
+        /** Dispatches a simulated key event to the Google Docs editor. */
+        send(key, mods = {}) {
+          const keyCode = keyCodes[key];
+          const defaultMods = {
+            shift: false,
+            control: false,
+            alt: false,
+            meta: false,
+          };
+          const args = { keyCode, mods: { ...defaultMods, ...mods } };
+
+          let detailData = args;
+          // Firefox only
+          if (typeof cloneInto === "function") {
+            detailData = cloneInto(args, window);
+          }
+
+          window.dispatchEvent(
+            new CustomEvent("doc-keys-simulate-keypress", {
+              detail: detailData,
+            }),
+          );
+        },
+      };
+    })();
 
     /*
      * ======================================================================================
@@ -450,7 +447,7 @@
        */
       toVisual() {
         this.set("visual");
-        sendKeyEvent("right", { shift: true });
+        Keys.send("right", { shift: true });
       },
 
       /**
@@ -468,8 +465,8 @@
        */
       toNormal(skip_deselect = false) {
         if (!skip_deselect && this.isVisual()) {
-          sendKeyEvent("right");
-          sendKeyEvent("left");
+          Keys.send("right");
+          Keys.send("left");
         }
 
         this.set("normal");
@@ -739,7 +736,7 @@
       finishSearch(forward) {
         if (!forward) {
           setTimeout(() => {
-            sendKeyEvent("g", { control: true, shift: true });
+            Keys.send("g", { control: true, shift: true });
             Find.hideFindBar();
           }, 50);
         } else {
@@ -753,7 +750,7 @@
        */
       handleFindChar(key) {
         GoogleDocs.saveActiveElement();
-        sendKeyEvent("f", { control: true });
+        Keys.send("f", { control: true });
 
         setTimeout(() => {
           const activeEl = document.activeElement;
@@ -778,7 +775,7 @@
        */
       handleSlashSearch(forward = true, text = null) {
         GoogleDocs.saveActiveElement();
-        sendKeyEvent("f", { control: true });
+        Keys.send("f", { control: true });
         Find.is_forward = forward;
         Find.is_active = true;
         Find.is_char_search = false;
@@ -824,11 +821,11 @@
           const selection =
             iframe.contentWindow?.getSelection() || window.getSelection();
           const selectedText = selection ? selection.toString().trim() : "";
-          sendKeyEvent("right"); // Deselect
+          Keys.send("right"); // Deselect
 
           // Open find dialog, simulate search
           if (selectedText) {
-            sendKeyEvent("f", { control: true });
+            Keys.send("f", { control: true });
             Find.is_forward = forward;
             Find.is_active = true;
             Find.is_char_search = false;
@@ -899,29 +896,29 @@
     const Select = {
       /** Selects from cursor to start of line. */
       toStartOfLine() {
-        sendKeyEvent("home", { shift: true });
+        Keys.send("home", { shift: true });
       },
       /** Selects from cursor to end of line. */
       toEndOfLine() {
-        sendKeyEvent("end", { shift: true });
+        Keys.send("end", { shift: true });
       },
       /** Selects from cursor to start of previous word (vim `b` in visual). */
       toStartOfWord() {
-        sendKeyEvent("left", wordMods(true));
+        Keys.send("left", Keys.wordMods(true));
       },
       /** Selects from cursor to end of current word (vim `e`/`w` in visual). */
       toEndOfWord() {
-        sendKeyEvent("right", wordMods(true));
+        Keys.send("right", Keys.wordMods(true));
       },
       /** Selects from cursor to end of paragraph. */
       toEndOfPara() {
-        sendKeyEvent("down", paragraphMods(true));
+        Keys.send("down", Keys.paragraphMods(true));
       },
       /** Selects the word under cursor (vim `iw` text object). */
       innerWord() {
-        sendKeyEvent("left");
-        sendKeyEvent("left", wordMods());
-        sendKeyEvent("right", wordMods(true));
+        Keys.send("left");
+        Keys.send("left", Keys.wordMods());
+        Keys.send("right", Keys.wordMods(true));
       },
     };
 
@@ -934,25 +931,25 @@
     const Move = {
       /** Moves cursor to start of current line (vim `0`, `^`, `_`). */
       toStartOfLine() {
-        sendKeyEvent("home");
+        Keys.send("home");
       },
       /** Moves cursor to end of current line (vim `$`). */
       toEndOfLine() {
-        sendKeyEvent("end");
+        Keys.send("end");
       },
 
       /** Moves cursor to end of current word (vim `e`). */
       toEndOfWord() {
-        sendKeyEvent("right", wordMods());
+        Keys.send("right", Keys.wordMods());
       },
       /** Moves cursor to start of previous word (vim `b`). */
       toStartOfWord() {
-        sendKeyEvent("left", wordMods());
+        Keys.send("left", Keys.wordMods());
       },
 
       /** Moves cursor to top of document (vim `gg`). */
       toTop() {
-        sendKeyEvent("home", { control: true });
+        Keys.send("home", { control: true });
         STATE.longStringOp = "";
       },
       /**
@@ -960,15 +957,15 @@
        * @param {boolean} [shift=false] - Whether to select while moving.
        */
       toEndOfPara(shift = false) {
-        sendKeyEvent("down", paragraphMods(shift));
-        sendKeyEvent("right", { shift });
+        Keys.send("down", Keys.paragraphMods(shift));
+        Keys.send("right", { shift });
       },
       /**
        * Moves cursor to start of paragraph.
        * @param {boolean} [shift=false] - Whether to select while moving.
        */
       toStartOfPara(shift = false) {
-        sendKeyEvent("up", paragraphMods(shift));
+        Keys.send("up", Keys.paragraphMods(shift));
       },
     };
 
@@ -983,31 +980,31 @@
       /** Opens a new line above cursor and enters insert mode (vim `O`). */
       addLineTop() {
         Move.toStartOfLine();
-        sendKeyEvent("enter");
-        sendKeyEvent("up");
+        Keys.send("enter");
+        Keys.send("up");
         Mode.toInsert();
       },
       /** Opens a new line below cursor and enters insert mode (vim `o`). */
       addLineBottom() {
         Move.toEndOfLine();
-        sendKeyEvent("enter");
+        Keys.send("enter");
         Mode.toInsert();
       },
       /** Moves cursor right and enters insert mode, handling line wrap (vim `a`). */
       append() {
         const cursor = GoogleDocs.getCursor();
         if (!cursor) {
-          sendKeyEvent("right");
+          Keys.send("right");
           Mode.toInsert();
           return;
         }
         const originalTop = cursor.getBoundingClientRect().top;
-        sendKeyEvent("right");
+        Keys.send("right");
         // Use requestAnimationFrame to wait for cursor position update
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const newTop = cursor.getBoundingClientRect().top;
-            if (newTop > originalTop + 10) sendKeyEvent("left");
+            if (newTop > originalTop + 10) Keys.send("left");
             Mode.toInsert();
           });
         });
@@ -1021,23 +1018,23 @@
         switch (key) {
           case ">":
             // Indent current line
-            sendKeyEvent("bracketRight", { control: true });
+            Keys.send("bracketRight", { control: true });
             break;
           case "*":
           case "-":
           case "l":
             // Bullet list (Ctrl+Shift+8)
-            sendKeyEvent("eight", { control: true, shift: true });
+            Keys.send("eight", { control: true, shift: true });
             break;
           case "n":
             // Numbered list (Ctrl+Shift+7)
-            sendKeyEvent("seven", { control: true, shift: true });
+            Keys.send("seven", { control: true, shift: true });
             break;
           case "[":
           case "]":
           case "t":
             // Checklist (Ctrl+Shift+9)
-            sendKeyEvent("nine", { control: true, shift: true });
+            Keys.send("nine", { control: true, shift: true });
             break;
         }
         Mode.toNormal();
@@ -1051,21 +1048,21 @@
         switch (key) {
           case "<":
             // Outdent current line
-            sendKeyEvent("bracketLeft", { control: true });
+            Keys.send("bracketLeft", { control: true });
             break;
           case "*":
           case "-":
             // Toggle off bullet list (Ctrl+Shift+8)
-            sendKeyEvent("eight", { control: true, shift: true });
+            Keys.send("eight", { control: true, shift: true });
             break;
           case "n":
             // Toggle off numbered list (Ctrl+Shift+7)
-            sendKeyEvent("seven", { control: true, shift: true });
+            Keys.send("seven", { control: true, shift: true });
             break;
           case "[":
           case "]":
             // Toggle off checklist (Ctrl+Shift+9)
-            sendKeyEvent("nine", { control: true, shift: true });
+            Keys.send("nine", { control: true, shift: true });
             break;
         }
         Mode.toNormal();
@@ -1088,11 +1085,11 @@
           break;
         case "y":
           clickMenu(menuItems.copy);
-          sendKeyEvent("left");
+          Keys.send("left");
           Mode.toNormal(true);
           break;
         case "p":
-          // sendKeyEvent("v", clipboardMods());
+          // Keys.send("v", Keys.clipboardMods());
           Mode.toNormal(true);
           break;
         case "v":
@@ -1186,7 +1183,7 @@
     function waitForVisualInput(key) {
       switch (key) {
         case "w":
-          sendKeyEvent("left", { control: true });
+          Keys.send("left", { control: true });
           Move.toStartOfWord();
           Select.toEndOfWord();
           break;
@@ -1236,19 +1233,19 @@
       if (e.ctrlKey && e.key === " ") {
         e.preventDefault();
         e.stopPropagation();
-        sendKeyEvent("enter", { control: true, alt: true });
+        Keys.send("enter", { control: true, alt: true });
         return;
       }
 
       if (e.ctrlKey && Mode.current === "normal") {
         if (e.key === "u") {
           e.preventDefault();
-          sendKeyEvent("pageup");
+          Keys.send("pageup");
           return;
         }
         if (e.key === "d") {
           e.preventDefault();
-          sendKeyEvent("pagedown");
+          Keys.send("pagedown");
           return;
         }
         if (e.key === "r") {
@@ -1273,11 +1270,11 @@
           return;
         }
         if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
-          sendKeyEvent("delete");
+          Keys.send("delete");
 
           // Use requestAnimationFrame to wait for delete to process
           requestAnimationFrame(() => {
-            sendKeyEvent("left");
+            Keys.send("left");
             Mode.toNormal();
           });
 
@@ -1296,16 +1293,16 @@
           Find.closeFindWindow();
           if (wasCharSearch) {
             if (wasTill && !wasForward) {
-              sendKeyEvent("right");
-              sendKeyEvent("right");
+              Keys.send("right");
+              Keys.send("right");
             } else {
-              sendKeyEvent("left");
-              if (wasTill) sendKeyEvent("left");
+              Keys.send("left");
+              if (wasTill) Keys.send("left");
             }
           }
         }
         if (Mode.current === "v-line" || Mode.current === "visual")
-          sendKeyEvent("right");
+          Keys.send("right");
         Mode.toNormal();
         return;
       }
@@ -1363,15 +1360,15 @@
       switch (key) {
         case "-":
           // Zoom out (Ctrl + -)
-          sendKeyEvent("minus", { control: true });
+          Keys.send("minus", { control: true });
           break;
         case "=":
           // Zoom in (Ctrl + =)
-          sendKeyEvent("equal", { control: true });
+          Keys.send("equal", { control: true });
           break;
         case "z":
           // Reset zoom to 100% (Ctrl + 0)
-          sendKeyEvent("zero", { control: true });
+          Keys.send("zero", { control: true });
           break;
       }
       Mode.toNormal();
@@ -1389,22 +1386,22 @@
           break;
         case "f":
           // Follow link at cursor (Alt + Enter)
-          sendKeyEvent("enter", { alt: true });
+          Keys.send("enter", { alt: true });
           break;
         case "m":
         case "/":
           // Open menu search (Alt + /)
-          sendKeyEvent("slash", { alt: true });
+          Keys.send("slash", { alt: true });
           break;
         case "h":
           // Go to next heading (Ctrl+Alt+N, then Ctrl+Alt+H)
-          sendKeyEvent("n", { control: true, alt: true });
-          setTimeout(() => sendKeyEvent("h", { control: true, alt: true }), 10);
+          Keys.send("n", { control: true, alt: true });
+          setTimeout(() => Keys.send("h", { control: true, alt: true }), 10);
           break;
         case "H":
           // Go to previous heading (Ctrl+Alt+P, then Ctrl+Alt+H)
-          sendKeyEvent("p", { control: true, alt: true });
-          setTimeout(() => sendKeyEvent("h", { control: true, alt: true }), 10);
+          Keys.send("p", { control: true, alt: true });
+          setTimeout(() => Keys.send("h", { control: true, alt: true }), 10);
           break;
         case "?":
           // Show help
@@ -1412,11 +1409,11 @@
           break;
         case "T":
           // Go to previous tab (Ctrl+Shift+PgUp)
-          sendKeyEvent("pageup", { control: true, shift: true });
+          Keys.send("pageup", { control: true, shift: true });
           break;
         case "t":
           // Go to next tab (Ctrl+Shift+PgDown)
-          sendKeyEvent("pagedown", { control: true, shift: true });
+          Keys.send("pagedown", { control: true, shift: true });
           break;
       }
       Mode.toNormal();
@@ -1453,11 +1450,11 @@
           Find.closeFindWindow();
           if (wasCharSearch) {
             if (wasTill && !wasForward) {
-              sendKeyEvent("right");
-              sendKeyEvent("right");
+              Keys.send("right");
+              Keys.send("right");
             } else {
-              sendKeyEvent("left");
-              if (wasTill) sendKeyEvent("left");
+              Keys.send("left");
+              if (wasTill) Keys.send("left");
             }
           }
         }
@@ -1465,16 +1462,16 @@
 
       switch (key) {
         case "h":
-          sendKeyEvent("left");
+          Keys.send("left");
           break;
         case "j":
-          sendKeyEvent("down");
+          Keys.send("down");
           break;
         case "k":
-          sendKeyEvent("up");
+          Keys.send("up");
           break;
         case "l":
-          sendKeyEvent("right");
+          Keys.send("right");
           break;
         case "}":
           Move.toEndOfPara();
@@ -1500,7 +1497,7 @@
           Mode.current = "waitForGo";
           return;
         case "G":
-          sendKeyEvent("end", { control: true });
+          Keys.send("end", { control: true });
           break;
         case "c":
         case "d":
@@ -1509,7 +1506,7 @@
           Mode.current = "waitForFirstInput";
           break;
         case "p":
-          //FIX: sendKeyEvent("v", clipboardMods());
+          //FIX: Keys.send("v", Keys.clipboardMods());
           break;
         case "a":
           Edit.append();
@@ -1563,7 +1560,7 @@
           break;
         case "f":
           if (Find.is_active && Find.is_char_search) {
-            sendKeyEvent("g", { control: true, shift: !Find.is_forward });
+            Keys.send("g", { control: true, shift: !Find.is_forward });
           } else {
             Find.is_forward = true;
             Find.is_till = false;
@@ -1572,7 +1569,7 @@
           return;
         case "F":
           if (Find.is_active && Find.is_char_search) {
-            sendKeyEvent("g", { control: true, shift: Find.is_forward });
+            Keys.send("g", { control: true, shift: Find.is_forward });
           } else {
             Find.is_forward = false;
             Find.is_till = false;
@@ -1581,7 +1578,7 @@
           return;
         case "t":
           if (Find.is_active && Find.is_char_search) {
-            sendKeyEvent("g", { control: true, shift: !Find.is_forward });
+            Keys.send("g", { control: true, shift: !Find.is_forward });
           } else {
             Find.is_forward = true;
             Find.is_till = true;
@@ -1590,7 +1587,7 @@
           return;
         case "T":
           if (Find.is_active && Find.is_char_search) {
-            sendKeyEvent("g", { control: true, shift: !Find.is_forward });
+            Keys.send("g", { control: true, shift: !Find.is_forward });
           } else {
             Find.is_forward = false;
             Find.is_till = true;
@@ -1599,12 +1596,12 @@
           return;
         case ";":
           if (Find.is_active && Find.is_char_search) {
-            sendKeyEvent("g", { control: true, shift: !Find.is_forward });
+            Keys.send("g", { control: true, shift: !Find.is_forward });
           }
           return;
         case ",":
           if (Find.is_active && Find.is_char_search) {
-            sendKeyEvent("g", { control: true, shift: Find.is_forward });
+            Keys.send("g", { control: true, shift: Find.is_forward });
           }
           return;
         case "/":
@@ -1621,24 +1618,24 @@
           return;
         case "n":
           if (Find.is_active && !Find.is_char_search) {
-            sendKeyEvent("g", { control: true, shift: !Find.is_forward });
+            Keys.send("g", { control: true, shift: !Find.is_forward });
           } else if (!Find.is_active && Find.last_search) {
             Find.handleSlashSearch(true, Find.last_search);
           }
           return;
         case "N":
           if (Find.is_active && !Find.is_char_search) {
-            sendKeyEvent("g", { control: true, shift: Find.is_forward });
+            Keys.send("g", { control: true, shift: Find.is_forward });
           } else if (!Find.is_active && Find.last_search) {
             Find.handleSlashSearch(false, Find.last_search);
           }
           return;
         case "x":
-          sendKeyEvent("delete");
+          Keys.send("delete");
           break;
         case ".":
           // Repeat last action (redo)
-          sendKeyEvent("y", { control: true });
+          Keys.send("y", { control: true });
           break;
         case ">":
           Mode.current = "waitForIndent";
@@ -1656,7 +1653,7 @@
           if (Find.is_active) Find.closeFindWindow();
           return;
         case "Backspace":
-          sendKeyEvent("left");
+          Keys.send("left");
           break;
         default:
           return;
@@ -1689,19 +1686,19 @@
         case "":
           break;
         case "h":
-          sendKeyEvent("left", { shift: true });
+          Keys.send("left", { shift: true });
           break;
         case "j":
-          sendKeyEvent("down", { shift: true });
+          Keys.send("down", { shift: true });
           break;
         case "k":
-          sendKeyEvent("up", { shift: true });
+          Keys.send("up", { shift: true });
           break;
         case "l":
-          sendKeyEvent("right", { shift: true });
+          Keys.send("right", { shift: true });
           break;
         case "p":
-          //FIX: sendKeyEvent("v", clipboardMods());
+          //FIX: Keys.send("v", Keys.clipboardMods());
           Mode.toNormal(true);
           break;
         case "}":
@@ -1726,10 +1723,10 @@
           Select.toEndOfLine();
           break;
         case "G":
-          sendKeyEvent("end", { control: true, shift: true });
+          Keys.send("end", { control: true, shift: true });
           break;
         case "g":
-          sendKeyEvent("home", { control: true, shift: true });
+          Keys.send("home", { control: true, shift: true });
           break;
         case "c":
         case "d":
@@ -1746,12 +1743,12 @@
           break;
         case ">":
           // Indent selection
-          sendKeyEvent("bracketRight", { control: true });
+          Keys.send("bracketRight", { control: true });
           Mode.toNormal(true);
           break;
         case "<":
           // Outdent selection
-          sendKeyEvent("bracketLeft", { control: true });
+          Keys.send("bracketLeft", { control: true });
           Mode.toNormal(true);
           break;
       }
