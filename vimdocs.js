@@ -15,7 +15,6 @@
 // ==/UserScript==
 
 // TODO: Add more `:` commands (e.g., :q, :run (open alt+/), :$s/text/replace/gc etc.)
-// TODO: `g` remaining options: gu=lowercase, gU=uppercase, g[=previousTab, g]=nextTab
 // TODO: Add keymap list to the help menu.
 
 (function () {
@@ -1523,6 +1522,14 @@
             // Go to top of document (gg)
             Move.toTop();
             break;
+          case "u":
+            // Lowercase selection (gu)
+            Menu.searchAndRun("Lowercase");
+            break;
+          case "U":
+            // Uppercase selection (gU)
+            Menu.searchAndRun("Uppercase");
+            break;
           case "f":
             // Follow link at cursor (Alt + Enter)
             Keys.send("enter", { alt: true });
@@ -1919,6 +1926,81 @@
       click(itemCaption) {
         const item = Menu.get(itemCaption);
         if (item) Menu.simulateClick(item);
+      },
+
+      /**
+       * Opens menu search (Alt+/), types a query, and runs the top result.
+       * @param {string} query - Search query to run.
+       */
+      searchAndRun(query) {
+        if (!query) return;
+        GoogleDocs.saveActiveElement();
+        Menu._setMenuSearchHidden(true);
+        Keys.send("slash", { alt: true });
+
+        setTimeout(() => {
+          const input = Menu._findMenuSearchInput();
+          if (!input) {
+            console.error("VimDocs: Could not find menu search input");
+            Menu._setMenuSearchHidden(false);
+            return;
+          }
+          input.focus();
+          input.value = query;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          setTimeout(() => {
+            const eventOpts = {
+              key: "Enter",
+              code: "Enter",
+              keyCode: 13,
+              which: 13,
+              bubbles: true,
+              cancelable: true,
+            };
+            input.dispatchEvent(new KeyboardEvent("keydown", eventOpts));
+            input.dispatchEvent(new KeyboardEvent("keypress", eventOpts));
+            input.dispatchEvent(new KeyboardEvent("keyup", eventOpts));
+            setTimeout(() => {
+              Menu._setMenuSearchHidden(false);
+            }, 80);
+          }, 120);
+        }, 80);
+      },
+
+      /**
+       * Finds the menu search input for Alt+/.
+       * @returns {HTMLInputElement|null} The search input element.
+       */
+      _findMenuSearchInput() {
+        const active = document.activeElement;
+        if (
+          active &&
+          (active.tagName === "INPUT" || active.tagName === "TEXTAREA")
+        ) {
+          return active;
+        }
+        return document.querySelector(
+          "input[aria-label*='Search the menus'], input[aria-label*='Search menu'], input[placeholder*='Search the menus']",
+        );
+      },
+
+      /**
+       * Toggles visibility of the menu search UI while keeping it functional.
+       * @param {boolean} hidden - Whether to hide the menu search UI.
+       */
+      _setMenuSearchHidden(hidden) {
+        const id = "vimdocs-menusearch-hide";
+        const existing = document.getElementById(id);
+        if (!hidden) {
+          if (existing) existing.remove();
+          return;
+        }
+        if (existing) return;
+        const style = document.createElement("style");
+        style.id = id;
+        style.textContent =
+          ".docs-omnibox-input, .ac-renderer { opacity: 0 !important; }";
+        document.head.appendChild(style);
       },
 
       /**
