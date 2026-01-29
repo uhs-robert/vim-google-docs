@@ -7,7 +7,7 @@
 // @description Vim-style keyboard shortcuts for Google Docs. Ported from the DocsKeys extension.
 // @author      uhs-robert
 // @license     MIT
-// @match       https://docs.google.com/document/*
+// @match       https://docs.google.com/document/d/*
 // @grant       none
 // @run-at      document-idle
 // @downloadURL https://update.greasyfork.org/scripts/562026/VimDocs%20%28Vim%20for%20Google%20Docs%29.user.js
