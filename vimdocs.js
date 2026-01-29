@@ -18,7 +18,6 @@
 // TODO: `g` remaining options: gu=lowercase, gU=uppercase, g[=previousTab, g]=nextTab
 // TODO: Add keymap list to the help menu.
 // TODO: Add wait after `1-9`, `operator`, to complete the motion.
-// TODO: Add paragraph commands like `d i p`
 
 (function () {
   "use strict";
@@ -936,6 +935,17 @@
         Keys.send("left", Keys.wordMods());
         Keys.send("right", Keys.wordMods(true));
       },
+      /** Selects the paragraph under cursor (vim `ip` text object). */
+      innerPara() {
+        Move.toStartOfPara();
+        Select.toEndOfPara();
+      },
+      /** Selects the paragraph with surrounding whitespace (vim `ap` text object). */
+      aroundPara() {
+        Move.toStartOfPara();
+        Select.toEndOfPara();
+        Keys.send("down", { shift: true });
+      },
     };
 
     /*
@@ -1095,6 +1105,8 @@
     const Operate = {
       /** The pending operator key (c, d, y, etc.). */
       pending: "",
+      /** The pending text object scope (i, a). */
+      pending_text_object: "",
 
       /**
        * Executes the pending operator on the current selection.
@@ -1134,9 +1146,11 @@
       waitForFirstInput(key) {
         switch (key) {
           case "i":
+            Operate.pending_text_object = "i";
             Mode.set("waitForTextObject");
             break;
           case "a":
+            Operate.pending_text_object = "a";
             Mode.set("waitForTextObject");
             break;
           case "w":
@@ -1199,9 +1213,20 @@
         switch (key) {
           case "w":
             Select.innerWord();
+            Operate.pending_text_object = "";
+            Operate.run();
+            break;
+          case "p":
+            if (Operate.pending_text_object === "a") {
+              Select.aroundPara();
+            } else {
+              Select.innerPara();
+            }
+            Operate.pending_text_object = "";
             Operate.run();
             break;
           default:
+            Operate.pending_text_object = "";
             Mode.toNormal();
             break;
         }
@@ -1219,10 +1244,14 @@
             Select.toEndOfWord();
             break;
           case "p":
-            Move.toStartOfPara();
-            Move.toEndOfPara(true);
+            if (Operate.pending_text_object === "a") {
+              Select.aroundPara();
+            } else {
+              Select.innerPara();
+            }
             break;
         }
+        Operate.pending_text_object = "";
         Mode.set("v-line");
       },
     };
@@ -1784,6 +1813,7 @@
             break;
           case "i":
           case "a":
+            Operate.pending_text_object = key;
             Mode.set("waitForVisualInput");
             break;
           case "x":
