@@ -532,6 +532,20 @@
             Command.showHelp();
           },
         },
+        run: {
+          description: "Open menu search (Alt+/)",
+          execute: () => {
+            GoogleDocs.restoreFocus(() => {
+              Keys.send("slash", { alt: true });
+            });
+          },
+        },
+        q: {
+          description: "Close document (go to Google Drive)",
+          execute: () => {
+            window.location.href = "https://docs.google.com/";
+          },
+        },
       },
 
       /**
