@@ -17,25 +17,6 @@
 // TODO: Add more `:` commands (e.g., :q, :run (open alt+/), :$s/text/replace/gc etc.)
 // TODO: `g` remaining options: gu=lowercase, gU=uppercase, g[=previousTab, g]=nextTab
 
-/** TODO:
- * Good candidates for modularization:
-  Object: Keys
-  What it would contain: keyCodes, sendKeyEvent(), modifier helpers (wordMods, paragraphMods, clipboardMods)
-
-  Object: Move
-  What it would contain: goToStartOfLine, goToEndOfLine, goToStartOfWord, goToEndOfWord, goToStartOfPara, goToEndOfPara, goToTop
-
-  Object: Select
-  What it would contain: selectToStartOfLine, selectToEndOfLine, selectToStartOfWord, selectToEndOfWord, selectToEndOfPara, selectInnerWord
-
-
-  Object: Operator
-  What it would contain: STATE.longStringOp, runLongStringOp, waitForFirstInput, waitForSecondInput, waitForTextObject, waitForVisualInput
-
-  Object: Menu
-  What it would contain: menuItems, menuItemElements, clickMenu, getMenuItem,findMenuItem, activateTopLevelMenu, simulateClick
- * */
-
 (function () {
   "use strict";
 
@@ -205,7 +186,6 @@
     }
 
     console.debug("VimDocs: Initializing...");
-    iframe.contentDocument.addEventListener("keydown", eventHandler, true);
 
     /*
      * ======================================================================================
@@ -869,24 +849,6 @@
       },
     };
 
-    const STATE = {
-      multipleMotion: {
-        times: 0,
-        mode: "normal",
-      },
-      longStringOp: "",
-    };
-
-    /**
-     * Repeats a motion function multiple times.
-     * @param {Function} motion - The motion handler function to repeat.
-     * @param {number} times - Number of times to repeat.
-     * @param {string} key - The key to pass to the motion handler.
-     */
-    function repeatMotion(motion, times, key) {
-      for (let i = 0; i < times; i++) motion(key);
-    }
-
     /*
      * ======================================================================================
      * SELECT
@@ -950,7 +912,7 @@
       /** Moves cursor to top of document (vim `gg`). */
       toTop() {
         Keys.send("home", { control: true });
-        STATE.longStringOp = "";
+        Operate.pending = "";
       },
       /**
        * Moves cursor to end of paragraph.
@@ -1069,795 +1031,846 @@
       },
     };
 
-    /**
-     * Executes the pending operator (c, d, y, p, g) on the current selection.
-     * @param {string} [operation=STATE.longStringOp] - The operator to execute.
+    /*
+     * ======================================================================================
+     * OPERATE
+     * Operator-pending mode logic: handles compound commands like `dw`, `ciw`, `yap`.
+     * Manages the pending operator state and dispatches to motion/text-object handlers.
+     * ======================================================================================
      */
-    function runLongStringOp(operation = STATE.longStringOp) {
-      switch (operation) {
-        case "c":
-          clickMenu(menuItems.cut);
-          Mode.toInsert();
-          break;
-        case "d":
-          clickMenu(menuItems.cut);
-          Mode.toNormal(true);
-          break;
-        case "y":
-          clickMenu(menuItems.copy);
-          Keys.send("left");
-          Mode.toNormal(true);
-          break;
-        case "p":
-          // Keys.send("v", Keys.clipboardMods());
-          Mode.toNormal(true);
-          break;
-        case "v":
-          break;
-        case "g":
-          Move.toTop();
-          break;
-      }
-    }
+    const Operate = {
+      /** The pending operator key (c, d, y, etc.). */
+      pending: "",
 
-    /**
-     * Handles the second input for compound motions (e.g., `daw` needs `a` then `w`).
-     * @param {string} key - The key pressed.
-     */
-    function waitForSecondInput(key) {
-      switch (key) {
-        case "w":
-          Move.toStartOfWord();
-          waitForFirstInput(key);
-          break;
-        case "p":
-          Move.toStartOfPara();
-          waitForFirstInput(key);
-          break;
-        default:
-          Mode.toNormal();
-          break;
-      }
-    }
-
-    /**
-     * Handles text object selection after `i` or `a` (e.g., `ciw`, `daw`).
-     * @param {string} key - The text object key (w for word, etc.).
-     */
-    function waitForTextObject(key) {
-      switch (key) {
-        case "w":
-          Select.innerWord();
-          runLongStringOp();
-          break;
-        default:
-          Mode.toNormal();
-          break;
-      }
-    }
-
-    /**
-     * Handles the first motion/text-object input after an operator (c, d, y).
-     * @param {string} key - The motion or text-object key.
-     */
-    function waitForFirstInput(key) {
-      switch (key) {
-        case "i":
-          Mode.current = "waitForTextObject";
-          break;
-        case "a":
-          Mode.current = "waitForTextObject";
-          break;
-        case "w":
-          Select.toEndOfWord();
-          runLongStringOp();
-          break;
-        case "p":
-          Select.toEndOfPara();
-          runLongStringOp();
-          break;
-        case "^":
-        case "_":
-        case "0":
-          Select.toStartOfLine();
-          runLongStringOp();
-          break;
-        case "$":
-          Select.toEndOfLine();
-          runLongStringOp();
-          break;
-        case STATE.longStringOp:
-          Move.toStartOfLine();
-          Select.toEndOfLine();
-          runLongStringOp();
-          break;
-        default:
-          Mode.toNormal();
-      }
-    }
-
-    /**
-     * Handles text object selection in visual mode (e.g., `viw`, `vap`).
-     * @param {string} key - The text object key.
-     */
-    function waitForVisualInput(key) {
-      switch (key) {
-        case "w":
-          Keys.send("left", { control: true });
-          Move.toStartOfWord();
-          Select.toEndOfWord();
-          break;
-        case "p":
-          Move.toStartOfPara();
-          Move.toEndOfPara(true);
-          break;
-      }
-      Mode.current = "v-line";
-    }
-
-    /**
-     * Handles count prefix for motions (e.g., `5j` moves down 5 lines).
-     * @param {string} key - The next key after the count digits.
-     */
-    function handleMultipleMotion(key) {
-      if (/[0-9]/.test(key)) {
-        STATE.multipleMotion.times = Number(
-          String(STATE.multipleMotion.times) + key,
-        );
-        return;
-      }
-      switch (STATE.multipleMotion.mode) {
-        case "normal":
-          repeatMotion(handleKeyEventNormal, STATE.multipleMotion.times, key);
-          break;
-        case "v-line":
-        case "visual":
-          repeatMotion(
-            handleKeyEventVisualLine,
-            STATE.multipleMotion.times,
-            key,
-          );
-          break;
-      }
-      Mode.current = STATE.multipleMotion.mode;
-    }
-
-    /**
-     * Main keyboard event handler. Routes keys to appropriate mode handlers.
-     * @param {KeyboardEvent} e - The keyboard event from the editor iframe.
-     */
-    function eventHandler(e) {
-      if (["Shift", "Meta", "Control", "Alt", ""].includes(e.key)) return;
-
-      // Ctrl+Space: Toggle checkbox (sends Ctrl+Alt+Enter)
-      if (e.ctrlKey && e.key === " ") {
-        e.preventDefault();
-        e.stopPropagation();
-        Keys.send("enter", { control: true, alt: true });
-        return;
-      }
-
-      if (e.ctrlKey && Mode.current === "normal") {
-        if (e.key === "u") {
-          e.preventDefault();
-          Keys.send("pageup");
-          return;
-        }
-        if (e.key === "d") {
-          e.preventDefault();
-          Keys.send("pagedown");
-          return;
-        }
-        if (e.key === "r") {
-          e.preventDefault();
-          clickMenu(menuItems.redo);
-          return;
-        }
-      }
-
-      if (e.ctrlKey && Mode.current === "insert" && e.key === "o") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        Mode.toNormal();
-        Mode.temp_normal = true;
-        return;
-      }
-
-      if (Mode.current === "insert" && Mode.replace_char) {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          Mode.toNormal();
-          return;
-        }
-        if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
-          Keys.send("delete");
-
-          // Use requestAnimationFrame to wait for delete to process
-          requestAnimationFrame(() => {
+      /**
+       * Executes the pending operator on the current selection.
+       * @param {string} [operation=Operate.pending] - The operator to execute.
+       */
+      run(operation = Operate.pending) {
+        switch (operation) {
+          case "c":
+            Menu.click(Menu.items.cut);
+            Mode.toInsert();
+            break;
+          case "d":
+            Menu.click(Menu.items.cut);
+            Mode.toNormal(true);
+            break;
+          case "y":
+            Menu.click(Menu.items.copy);
             Keys.send("left");
+            Mode.toNormal(true);
+            break;
+          case "p":
+            // Keys.send("v", Keys.clipboardMods());
+            Mode.toNormal(true);
+            break;
+          case "v":
+            break;
+          case "g":
+            Move.toTop();
+            break;
+        }
+      },
+
+      /**
+       * Handles the first motion/text-object input after an operator (c, d, y).
+       * @param {string} key - The motion or text-object key.
+       */
+      waitForFirstInput(key) {
+        switch (key) {
+          case "i":
+            Mode.current = "waitForTextObject";
+            break;
+          case "a":
+            Mode.current = "waitForTextObject";
+            break;
+          case "w":
+            Select.toEndOfWord();
+            Operate.run();
+            break;
+          case "p":
+            Select.toEndOfPara();
+            Operate.run();
+            break;
+          case "^":
+          case "_":
+          case "0":
+            Select.toStartOfLine();
+            Operate.run();
+            break;
+          case "$":
+            Select.toEndOfLine();
+            Operate.run();
+            break;
+          case Operate.pending:
+            Move.toStartOfLine();
+            Select.toEndOfLine();
+            Operate.run();
+            break;
+          default:
             Mode.toNormal();
-          });
-
-          return;
         }
-      }
+      },
 
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
-
-      if (e.key === "Escape") {
-        e.preventDefault();
-        if (Find.is_active) {
-          const wasCharSearch = Find.is_char_search;
-          const wasTill = Find.is_till;
-          const wasForward = Find.is_forward;
-          Find.closeFindWindow();
-          if (wasCharSearch) {
-            if (wasTill && !wasForward) {
-              Keys.send("right");
-              Keys.send("right");
-            } else {
-              Keys.send("left");
-              if (wasTill) Keys.send("left");
-            }
-          }
-        }
-        if (Mode.current === "v-line" || Mode.current === "visual")
-          Keys.send("right");
-        Mode.toNormal();
-        return;
-      }
-
-      if (Mode.current != "insert") {
-        e.preventDefault();
-        e.stopPropagation();
-        switch (Mode.current) {
-          case "normal":
-            handleKeyEventNormal(e.key);
+      /**
+       * Handles the second input for compound motions (e.g., `daw` needs `a` then `w`).
+       * @param {string} key - The key pressed.
+       */
+      waitForSecondInput(key) {
+        switch (key) {
+          case "w":
+            Move.toStartOfWord();
+            Operate.waitForFirstInput(key);
             break;
-          case "visual":
-          case "v-line":
-            handleKeyEventVisualLine(e.key);
+          case "p":
+            Move.toStartOfPara();
+            Operate.waitForFirstInput(key);
             break;
-          case "waitForFirstInput":
-            waitForFirstInput(e.key);
-            break;
-          case "waitForSecondInput":
-            waitForSecondInput(e.key);
-            break;
-          case "waitForVisualInput":
-            waitForVisualInput(e.key);
-            break;
-          case "waitForTextObject":
-            waitForTextObject(e.key);
-            break;
-          case "multipleMotion":
-            handleMultipleMotion(e.key);
-            break;
-          case "waitForFindChar":
-            Find.handleFindChar(e.key);
-            break;
-          case "waitForIndent":
-            Edit.indent(e.key);
-            break;
-          case "waitForOutdent":
-            Edit.outdent(e.key);
-            break;
-          case "waitForZoom":
-            handleZoom(e.key);
-            break;
-          case "waitForGo":
-            handleGo(e.key);
+          default:
+            Mode.toNormal();
             break;
         }
-      }
-    }
+      },
 
-    /**
-     * Handles zoom commands (vim `z-`, `z=`, `zz`).
-     * @param {string} key - The key pressed after `z`.
-     */
-    function handleZoom(key) {
-      switch (key) {
-        case "-":
-          // Zoom out (Ctrl + -)
-          Keys.send("minus", { control: true });
-          break;
-        case "=":
-          // Zoom in (Ctrl + =)
-          Keys.send("equal", { control: true });
-          break;
-        case "z":
-          // Reset zoom to 100% (Ctrl + 0)
-          Keys.send("zero", { control: true });
-          break;
-      }
-      Mode.toNormal();
-    }
-
-    /**
-     * Handles go commands (vim `g` prefix).
-     * @param {string} key - The key pressed after `g`.
-     */
-    function handleGo(key) {
-      switch (key) {
-        case "g":
-          // Go to top of document (gg)
-          Move.toTop();
-          break;
-        case "f":
-          // Follow link at cursor (Alt + Enter)
-          Keys.send("enter", { alt: true });
-          break;
-        case "m":
-        case "/":
-          // Open menu search (Alt + /)
-          Keys.send("slash", { alt: true });
-          break;
-        case "h":
-          // Go to next heading (Ctrl+Alt+N, then Ctrl+Alt+H)
-          Keys.send("n", { control: true, alt: true });
-          setTimeout(() => Keys.send("h", { control: true, alt: true }), 10);
-          break;
-        case "H":
-          // Go to previous heading (Ctrl+Alt+P, then Ctrl+Alt+H)
-          Keys.send("p", { control: true, alt: true });
-          setTimeout(() => Keys.send("h", { control: true, alt: true }), 10);
-          break;
-        case "?":
-          // Show help
-          Command.showHelp();
-          break;
-        case "T":
-          // Go to previous tab (Ctrl+Shift+PgUp)
-          Keys.send("pageup", { control: true, shift: true });
-          break;
-        case "t":
-          // Go to next tab (Ctrl+Shift+PgDown)
-          Keys.send("pagedown", { control: true, shift: true });
-          break;
-      }
-      Mode.toNormal();
-    }
-
-    /**
-     * Handles key events in normal mode.
-     * @param {string} key - The key pressed.
-     */
-    function handleKeyEventNormal(key) {
-      if (/[1-9]/.test(key)) {
-        Mode.current = "multipleMotion";
-        STATE.multipleMotion.mode = "normal";
-        STATE.multipleMotion.times = Number(key);
-        return;
-      }
-
-      // Cancel search if key isn't the cycling key for that search type
-      if (Find.is_active) {
-        const isCharCycleKey =
-          Find.is_char_search &&
-          (key === "f" ||
-            key === "F" ||
-            key === "t" ||
-            key === "T" ||
-            key === ";" ||
-            key === ",");
-        const isSlashCycleKey =
-          !Find.is_char_search && (key === "n" || key === "N");
-        if (!isCharCycleKey && !isSlashCycleKey) {
-          const wasCharSearch = Find.is_char_search;
-          const wasTill = Find.is_till;
-          const wasForward = Find.is_forward;
-          Find.closeFindWindow();
-          if (wasCharSearch) {
-            if (wasTill && !wasForward) {
-              Keys.send("right");
-              Keys.send("right");
-            } else {
-              Keys.send("left");
-              if (wasTill) Keys.send("left");
-            }
-          }
+      /**
+       * Handles text object selection after `i` or `a` (e.g., `ciw`, `daw`).
+       * @param {string} key - The text object key (w for word, etc.).
+       */
+      waitForTextObject(key) {
+        switch (key) {
+          case "w":
+            Select.innerWord();
+            Operate.run();
+            break;
+          default:
+            Mode.toNormal();
+            break;
         }
-      }
+      },
 
-      switch (key) {
-        case "h":
-          Keys.send("left");
-          break;
-        case "j":
-          Keys.send("down");
-          break;
-        case "k":
-          Keys.send("up");
-          break;
-        case "l":
-          Keys.send("right");
-          break;
-        case "}":
-          Move.toEndOfPara();
-          break;
-        case "{":
-          Move.toStartOfPara();
-          break;
-        case "b":
-        case "B":
-          Move.toStartOfWord();
-          break;
-        case "e":
-        case "E":
-          Move.toEndOfWord();
-          break;
-        case "w":
-        case "W":
-          Move.toEndOfWord();
-          Move.toEndOfWord();
-          Move.toStartOfWord();
-          break;
-        case "g":
-          Mode.current = "waitForGo";
-          return;
-        case "G":
-          Keys.send("end", { control: true });
-          break;
-        case "c":
-        case "d":
-        case "y":
-          STATE.longStringOp = key;
-          Mode.current = "waitForFirstInput";
-          break;
-        case "p":
-          //FIX: Keys.send("v", Keys.clipboardMods());
-          break;
-        case "a":
-          Edit.append();
-          break;
-        case "A":
-          Move.toEndOfLine();
-          Mode.toInsert();
-          break;
-        case "i":
-          Mode.toInsert();
-          break;
-        case "I":
-          Move.toStartOfLine();
-          Mode.toInsert();
-          break;
-        case "^":
-        case "_":
-        case "0":
-          Move.toStartOfLine();
-          break;
-        case "$":
-          Move.toEndOfLine();
-          break;
-        case "C":
-          Select.toEndOfLine();
-          clickMenu(menuItems.cut);
-          Mode.toInsert();
-          break;
-        case "D":
-          Select.toEndOfLine();
-          clickMenu(menuItems.cut);
-          break;
-        case "v":
-          Mode.toVisual();
-          break;
-        case "V":
-          Mode.toVisualLine();
-          break;
-        case "o":
-          Edit.addLineBottom();
-          break;
-        case "O":
-          Edit.addLineTop();
-          break;
-        case "u":
-          clickMenu(menuItems.undo);
-          break;
-        case "r":
-          Mode.replace_char = true;
-          Mode.toInsert();
-          break;
-        case "f":
-          if (Find.is_active && Find.is_char_search) {
-            Keys.send("g", { control: true, shift: !Find.is_forward });
-          } else {
-            Find.is_forward = true;
-            Find.is_till = false;
-            Mode.current = "waitForFindChar";
-          }
-          return;
-        case "F":
-          if (Find.is_active && Find.is_char_search) {
-            Keys.send("g", { control: true, shift: Find.is_forward });
-          } else {
-            Find.is_forward = false;
-            Find.is_till = false;
-            Mode.current = "waitForFindChar";
-          }
-          return;
-        case "t":
-          if (Find.is_active && Find.is_char_search) {
-            Keys.send("g", { control: true, shift: !Find.is_forward });
-          } else {
-            Find.is_forward = true;
-            Find.is_till = true;
-            Mode.current = "waitForFindChar";
-          }
-          return;
-        case "T":
-          if (Find.is_active && Find.is_char_search) {
-            Keys.send("g", { control: true, shift: !Find.is_forward });
-          } else {
-            Find.is_forward = false;
-            Find.is_till = true;
-            Mode.current = "waitForFindChar";
-          }
-          return;
-        case ";":
-          if (Find.is_active && Find.is_char_search) {
-            Keys.send("g", { control: true, shift: !Find.is_forward });
-          }
-          return;
-        case ",":
-          if (Find.is_active && Find.is_char_search) {
-            Keys.send("g", { control: true, shift: Find.is_forward });
-          }
-          return;
-        case "/":
-          Find.handleSlashSearch(true);
-          return;
-        case "?":
-          Find.handleSlashSearch(false);
-          return;
-        case "*":
-          Find.handleStarSearch(true);
-          return;
-        case "#":
-          Find.handleStarSearch(false);
-          return;
-        case "n":
-          if (Find.is_active && !Find.is_char_search) {
-            Keys.send("g", { control: true, shift: !Find.is_forward });
-          } else if (!Find.is_active && Find.last_search) {
-            Find.handleSlashSearch(true, Find.last_search);
-          }
-          return;
-        case "N":
-          if (Find.is_active && !Find.is_char_search) {
-            Keys.send("g", { control: true, shift: Find.is_forward });
-          } else if (!Find.is_active && Find.last_search) {
-            Find.handleSlashSearch(false, Find.last_search);
-          }
-          return;
-        case "x":
-          Keys.send("delete");
-          break;
-        case ".":
-          // Repeat last action (redo)
-          Keys.send("y", { control: true });
-          break;
-        case ">":
-          Mode.current = "waitForIndent";
-          return;
-        case "<":
-          Mode.current = "waitForOutdent";
-          return;
-        case "z":
-          Mode.current = "waitForZoom";
-          return;
-        case ":":
-          Command.open();
-          return;
-        case "Enter":
-          if (Find.is_active) Find.closeFindWindow();
-          return;
-        case "Backspace":
-          Keys.send("left");
-          break;
-        default:
-          return;
-      }
-      if (Mode.temp_normal) {
-        Mode.temp_normal = false;
-        if (
-          Mode.current != "visual" &&
-          Mode.current != "v-line" &&
-          Mode.current != "waitForFirstInput" &&
-          Mode.current != "waitForTextObject"
-        ) {
-          Mode.toInsert();
+      /**
+       * Handles text object selection in visual mode (e.g., `viw`, `vap`).
+       * @param {string} key - The text object key.
+       */
+      waitForVisualInput(key) {
+        switch (key) {
+          case "w":
+            Keys.send("left", { control: true });
+            Move.toStartOfWord();
+            Select.toEndOfWord();
+            break;
+          case "p":
+            Move.toStartOfPara();
+            Move.toEndOfPara(true);
+            break;
         }
-      }
-    }
-
-    /**
-     * Handles key events in visual and visual-line modes.
-     * @param {string} key - The key pressed.
-     */
-    function handleKeyEventVisualLine(key) {
-      if (/[1-9]/.test(key)) {
-        Mode.current = "multipleMotion";
-        STATE.multipleMotion.mode = "v-line";
-        STATE.multipleMotion.times = Number(key);
-        return;
-      }
-      switch (key) {
-        case "":
-          break;
-        case "h":
-          Keys.send("left", { shift: true });
-          break;
-        case "j":
-          Keys.send("down", { shift: true });
-          break;
-        case "k":
-          Keys.send("up", { shift: true });
-          break;
-        case "l":
-          Keys.send("right", { shift: true });
-          break;
-        case "p":
-          //FIX: Keys.send("v", Keys.clipboardMods());
-          Mode.toNormal(true);
-          break;
-        case "}":
-          Move.toEndOfPara(true);
-          break;
-        case "{":
-          Move.toStartOfPara(true);
-          break;
-        case "b":
-          Select.toStartOfWord();
-          break;
-        case "e":
-        case "w":
-          Select.toEndOfWord();
-          break;
-        case "^":
-        case "_":
-        case "0":
-          Select.toStartOfLine();
-          break;
-        case "$":
-          Select.toEndOfLine();
-          break;
-        case "G":
-          Keys.send("end", { control: true, shift: true });
-          break;
-        case "g":
-          Keys.send("home", { control: true, shift: true });
-          break;
-        case "c":
-        case "d":
-        case "y":
-          runLongStringOp(key);
-          break;
-        case "i":
-        case "a":
-          Mode.current = "waitForVisualInput";
-          break;
-        case "x":
-          clickMenu(menuItems.cut);
-          Mode.toNormal(true);
-          break;
-        case ">":
-          // Indent selection
-          Keys.send("bracketRight", { control: true });
-          Mode.toNormal(true);
-          break;
-        case "<":
-          // Outdent selection
-          Keys.send("bracketLeft", { control: true });
-          Mode.toNormal(true);
-          break;
-      }
-    }
-
-    let menuItemElements = {};
-    let menuItems = {
-      copy: { parent: "Edit", caption: "Copy" },
-      cut: { parent: "Edit", caption: "Cut" },
-      paste: { parent: "Edit", caption: "Paste" },
-      redo: { parent: "Edit", caption: "Redo" },
-      undo: { parent: "Edit", caption: "Undo" },
-      find: { parent: "Edit", caption: "Find" },
+        Mode.current = "v-line";
+      },
     };
 
-    /**
-     * Clicks a Google Docs menu item by its definition.
-     * @param {Object} itemCaption - Menu item definition with parent and caption.
+    /*
+     * ======================================================================================
+     * VIM
+     * Core vim event loop: main keydown handler, per-mode dispatch, count-repeat,
+     * and compound command handlers (g-prefix, z-prefix).
+     * ======================================================================================
      */
-    function clickMenu(itemCaption) {
-      const item = getMenuItem(itemCaption);
-      if (item) simulateClick(item);
-    }
+    const Vim = {
+      /** State for count-prefixed motions (e.g., `5j`). */
+      _repeat: {
+        times: 0,
+        mode: "normal",
+      },
 
-    /**
-     * Gets a cached menu item element or finds and caches it.
-     * @param {Object} menuItem - Menu item definition with parent and caption.
-     * @param {boolean} [silenceWarning=false] - Suppress console warning if not found.
-     * @returns {Element|null} The menu item element or null if not found.
-     */
-    function getMenuItem(menuItem, silenceWarning = false) {
-      const caption = menuItem.caption;
-      let el = menuItemElements[caption];
-      if (el) return el;
-      el = findMenuItem(menuItem);
-      if (!el) {
-        if (!silenceWarning)
-          console.error("VimDocs: Could not find menu item", menuItem.caption);
-        return null;
-      }
-      return (menuItemElements[caption] = el);
-    }
+      /**
+       * Repeats a handler function multiple times.
+       * @param {Function} handler - The handler function to repeat.
+       * @param {number} times - Number of times to repeat.
+       * @param {string} key - The key to pass to the handler.
+       */
+      repeatMotion(handler, times, key) {
+        for (let i = 0; i < times; i++) handler(key);
+      },
 
-    /**
-     * Finds a menu item element by activating its parent menu and searching.
-     * @param {Object} menuItem - Menu item definition with parent and caption.
-     * @returns {Element|null} The menu item element or null if not found.
-     */
-    function findMenuItem(menuItem) {
-      activateTopLevelMenu(menuItem.parent);
-      const menuItemEls = document.querySelectorAll(".goog-menuitem");
-      const caption = menuItem.caption;
-      const isRegexp = caption instanceof RegExp;
-      for (const el of Array.from(menuItemEls)) {
-        const label = el.innerText;
-        if (!label) continue;
-        if (isRegexp) {
-          if (caption.test(label)) return el;
-        } else {
-          if (label.startsWith(caption)) return el;
+      /**
+       * Handles count prefix for motions (e.g., `5j` moves down 5 lines).
+       * @param {string} key - The next key after the count digits.
+       */
+      handleMultipleMotion(key) {
+        if (/[0-9]/.test(key)) {
+          Vim._repeat.times = Number(String(Vim._repeat.times) + key);
+          return;
         }
-      }
-      return null;
-    }
+        switch (Vim._repeat.mode) {
+          case "normal":
+            Vim.repeatMotion(Vim.handleNormal, Vim._repeat.times, key);
+            break;
+          case "v-line":
+          case "visual":
+            Vim.repeatMotion(Vim.handleVisualLine, Vim._repeat.times, key);
+            break;
+        }
+        Mode.current = Vim._repeat.mode;
+      },
 
-    /**
-     * Simulates a full mouse click sequence on an element.
-     * @param {Element} el - The element to click.
-     * @param {number} [x=0] - X coordinate for the click.
-     * @param {number} [y=0] - Y coordinate for the click.
+      /**
+       * Main keyboard event handler. Routes keys to appropriate mode handlers.
+       * @param {KeyboardEvent} e - The keyboard event from the editor iframe.
+       */
+      onKeyDown(e) {
+        if (["Shift", "Meta", "Control", "Alt", ""].includes(e.key)) return;
+
+        // Ctrl+Space: Toggle checkbox (sends Ctrl+Alt+Enter)
+        if (e.ctrlKey && e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          Keys.send("enter", { control: true, alt: true });
+          return;
+        }
+
+        if (e.ctrlKey && Mode.current === "normal") {
+          if (e.key === "u") {
+            e.preventDefault();
+            Keys.send("pageup");
+            return;
+          }
+          if (e.key === "d") {
+            e.preventDefault();
+            Keys.send("pagedown");
+            return;
+          }
+          if (e.key === "r") {
+            e.preventDefault();
+            Menu.click(Menu.items.redo);
+            return;
+          }
+        }
+
+        if (e.ctrlKey && Mode.current === "insert" && e.key === "o") {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          Mode.toNormal();
+          Mode.temp_normal = true;
+          return;
+        }
+
+        if (Mode.current === "insert" && Mode.replace_char) {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            Mode.toNormal();
+            return;
+          }
+          if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+            Keys.send("delete");
+
+            // Use requestAnimationFrame to wait for delete to process
+            requestAnimationFrame(() => {
+              Keys.send("left");
+              Mode.toNormal();
+            });
+
+            return;
+          }
+        }
+
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          if (Find.is_active) {
+            const wasCharSearch = Find.is_char_search;
+            const wasTill = Find.is_till;
+            const wasForward = Find.is_forward;
+            Find.closeFindWindow();
+            if (wasCharSearch) {
+              if (wasTill && !wasForward) {
+                Keys.send("right");
+                Keys.send("right");
+              } else {
+                Keys.send("left");
+                if (wasTill) Keys.send("left");
+              }
+            }
+          }
+          if (Mode.current === "v-line" || Mode.current === "visual")
+            Keys.send("right");
+          Mode.toNormal();
+          return;
+        }
+
+        if (Mode.current != "insert") {
+          e.preventDefault();
+          e.stopPropagation();
+          switch (Mode.current) {
+            case "normal":
+              Vim.handleNormal(e.key);
+              break;
+            case "visual":
+            case "v-line":
+              Vim.handleVisualLine(e.key);
+              break;
+            case "waitForFirstInput":
+              Operate.waitForFirstInput(e.key);
+              break;
+            case "waitForSecondInput":
+              Operate.waitForSecondInput(e.key);
+              break;
+            case "waitForVisualInput":
+              Operate.waitForVisualInput(e.key);
+              break;
+            case "waitForTextObject":
+              Operate.waitForTextObject(e.key);
+              break;
+            case "multipleMotion":
+              Vim.handleMultipleMotion(e.key);
+              break;
+            case "waitForFindChar":
+              Find.handleFindChar(e.key);
+              break;
+            case "waitForIndent":
+              Edit.indent(e.key);
+              break;
+            case "waitForOutdent":
+              Edit.outdent(e.key);
+              break;
+            case "waitForZoom":
+              Vim.handleZoom(e.key);
+              break;
+            case "waitForGo":
+              Vim.handleGo(e.key);
+              break;
+          }
+        }
+      },
+
+      /**
+       * Handles zoom commands (vim `z-`, `z=`, `zz`).
+       * @param {string} key - The key pressed after `z`.
+       */
+      handleZoom(key) {
+        switch (key) {
+          case "-":
+            // Zoom out (Ctrl + -)
+            Keys.send("minus", { control: true });
+            break;
+          case "=":
+            // Zoom in (Ctrl + =)
+            Keys.send("equal", { control: true });
+            break;
+          case "z":
+            // Reset zoom to 100% (Ctrl + 0)
+            Keys.send("zero", { control: true });
+            break;
+        }
+        Mode.toNormal();
+      },
+
+      /**
+       * Handles go commands (vim `g` prefix).
+       * @param {string} key - The key pressed after `g`.
+       */
+      handleGo(key) {
+        switch (key) {
+          case "g":
+            // Go to top of document (gg)
+            Move.toTop();
+            break;
+          case "f":
+            // Follow link at cursor (Alt + Enter)
+            Keys.send("enter", { alt: true });
+            break;
+          case "m":
+          case "/":
+            // Open menu search (Alt + /)
+            Keys.send("slash", { alt: true });
+            break;
+          case "h":
+            // Go to next heading (Ctrl+Alt+N, then Ctrl+Alt+H)
+            Keys.send("n", { control: true, alt: true });
+            setTimeout(() => Keys.send("h", { control: true, alt: true }), 10);
+            break;
+          case "H":
+            // Go to previous heading (Ctrl+Alt+P, then Ctrl+Alt+H)
+            Keys.send("p", { control: true, alt: true });
+            setTimeout(() => Keys.send("h", { control: true, alt: true }), 10);
+            break;
+          case "?":
+            // Show help
+            Command.showHelp();
+            break;
+          case "T":
+            // Go to previous tab (Ctrl+Shift+PgUp)
+            Keys.send("pageup", { control: true, shift: true });
+            break;
+          case "t":
+            // Go to next tab (Ctrl+Shift+PgDown)
+            Keys.send("pagedown", { control: true, shift: true });
+            break;
+        }
+        Mode.toNormal();
+      },
+
+      /**
+       * Handles key events in normal mode.
+       * @param {string} key - The key pressed.
+       */
+      handleNormal(key) {
+        if (/[1-9]/.test(key)) {
+          Mode.current = "multipleMotion";
+          Vim._repeat.mode = "normal";
+          Vim._repeat.times = Number(key);
+          return;
+        }
+
+        // Cancel search if key isn't the cycling key for that search type
+        if (Find.is_active) {
+          const isCharCycleKey =
+            Find.is_char_search &&
+            (key === "f" ||
+              key === "F" ||
+              key === "t" ||
+              key === "T" ||
+              key === ";" ||
+              key === ",");
+          const isSlashCycleKey =
+            !Find.is_char_search && (key === "n" || key === "N");
+          if (!isCharCycleKey && !isSlashCycleKey) {
+            const wasCharSearch = Find.is_char_search;
+            const wasTill = Find.is_till;
+            const wasForward = Find.is_forward;
+            Find.closeFindWindow();
+            if (wasCharSearch) {
+              if (wasTill && !wasForward) {
+                Keys.send("right");
+                Keys.send("right");
+              } else {
+                Keys.send("left");
+                if (wasTill) Keys.send("left");
+              }
+            }
+          }
+        }
+
+        switch (key) {
+          case "h":
+            Keys.send("left");
+            break;
+          case "j":
+            Keys.send("down");
+            break;
+          case "k":
+            Keys.send("up");
+            break;
+          case "l":
+            Keys.send("right");
+            break;
+          case "}":
+            Move.toEndOfPara();
+            break;
+          case "{":
+            Move.toStartOfPara();
+            break;
+          case "b":
+          case "B":
+            Move.toStartOfWord();
+            break;
+          case "e":
+          case "E":
+            Move.toEndOfWord();
+            break;
+          case "w":
+          case "W":
+            Move.toEndOfWord();
+            Move.toEndOfWord();
+            Move.toStartOfWord();
+            break;
+          case "g":
+            Mode.current = "waitForGo";
+            return;
+          case "G":
+            Keys.send("end", { control: true });
+            break;
+          case "c":
+          case "d":
+          case "y":
+            Operate.pending = key;
+            Mode.current = "waitForFirstInput";
+            break;
+          case "p":
+            //FIX: Keys.send("v", Keys.clipboardMods());
+            break;
+          case "a":
+            Edit.append();
+            break;
+          case "A":
+            Move.toEndOfLine();
+            Mode.toInsert();
+            break;
+          case "i":
+            Mode.toInsert();
+            break;
+          case "I":
+            Move.toStartOfLine();
+            Mode.toInsert();
+            break;
+          case "^":
+          case "_":
+          case "0":
+            Move.toStartOfLine();
+            break;
+          case "$":
+            Move.toEndOfLine();
+            break;
+          case "C":
+            Select.toEndOfLine();
+            Menu.click(Menu.items.cut);
+            Mode.toInsert();
+            break;
+          case "D":
+            Select.toEndOfLine();
+            Menu.click(Menu.items.cut);
+            break;
+          case "v":
+            Mode.toVisual();
+            break;
+          case "V":
+            Mode.toVisualLine();
+            break;
+          case "o":
+            Edit.addLineBottom();
+            break;
+          case "O":
+            Edit.addLineTop();
+            break;
+          case "u":
+            Menu.click(Menu.items.undo);
+            break;
+          case "r":
+            Mode.replace_char = true;
+            Mode.toInsert();
+            break;
+          case "f":
+            if (Find.is_active && Find.is_char_search) {
+              Keys.send("g", { control: true, shift: !Find.is_forward });
+            } else {
+              Find.is_forward = true;
+              Find.is_till = false;
+              Mode.current = "waitForFindChar";
+            }
+            return;
+          case "F":
+            if (Find.is_active && Find.is_char_search) {
+              Keys.send("g", { control: true, shift: Find.is_forward });
+            } else {
+              Find.is_forward = false;
+              Find.is_till = false;
+              Mode.current = "waitForFindChar";
+            }
+            return;
+          case "t":
+            if (Find.is_active && Find.is_char_search) {
+              Keys.send("g", { control: true, shift: !Find.is_forward });
+            } else {
+              Find.is_forward = true;
+              Find.is_till = true;
+              Mode.current = "waitForFindChar";
+            }
+            return;
+          case "T":
+            if (Find.is_active && Find.is_char_search) {
+              Keys.send("g", { control: true, shift: !Find.is_forward });
+            } else {
+              Find.is_forward = false;
+              Find.is_till = true;
+              Mode.current = "waitForFindChar";
+            }
+            return;
+          case ";":
+            if (Find.is_active && Find.is_char_search) {
+              Keys.send("g", { control: true, shift: !Find.is_forward });
+            }
+            return;
+          case ",":
+            if (Find.is_active && Find.is_char_search) {
+              Keys.send("g", { control: true, shift: Find.is_forward });
+            }
+            return;
+          case "/":
+            Find.handleSlashSearch(true);
+            return;
+          case "?":
+            Find.handleSlashSearch(false);
+            return;
+          case "*":
+            Find.handleStarSearch(true);
+            return;
+          case "#":
+            Find.handleStarSearch(false);
+            return;
+          case "n":
+            if (Find.is_active && !Find.is_char_search) {
+              Keys.send("g", { control: true, shift: !Find.is_forward });
+            } else if (!Find.is_active && Find.last_search) {
+              Find.handleSlashSearch(true, Find.last_search);
+            }
+            return;
+          case "N":
+            if (Find.is_active && !Find.is_char_search) {
+              Keys.send("g", { control: true, shift: Find.is_forward });
+            } else if (!Find.is_active && Find.last_search) {
+              Find.handleSlashSearch(false, Find.last_search);
+            }
+            return;
+          case "x":
+            Keys.send("delete");
+            break;
+          case ".":
+            // Repeat last action (redo)
+            Keys.send("y", { control: true });
+            break;
+          case ">":
+            Mode.current = "waitForIndent";
+            return;
+          case "<":
+            Mode.current = "waitForOutdent";
+            return;
+          case "z":
+            Mode.current = "waitForZoom";
+            return;
+          case ":":
+            Command.open();
+            return;
+          case "Enter":
+            if (Find.is_active) Find.closeFindWindow();
+            return;
+          case "Backspace":
+            Keys.send("left");
+            break;
+          default:
+            return;
+        }
+        if (Mode.temp_normal) {
+          Mode.temp_normal = false;
+          if (
+            Mode.current != "visual" &&
+            Mode.current != "v-line" &&
+            Mode.current != "waitForFirstInput" &&
+            Mode.current != "waitForTextObject"
+          ) {
+            Mode.toInsert();
+          }
+        }
+      },
+
+      /**
+       * Handles key events in visual and visual-line modes.
+       * @param {string} key - The key pressed.
+       */
+      handleVisualLine(key) {
+        if (/[1-9]/.test(key)) {
+          Mode.current = "multipleMotion";
+          Vim._repeat.mode = "v-line";
+          Vim._repeat.times = Number(key);
+          return;
+        }
+        switch (key) {
+          case "":
+            break;
+          case "h":
+            Keys.send("left", { shift: true });
+            break;
+          case "j":
+            Keys.send("down", { shift: true });
+            break;
+          case "k":
+            Keys.send("up", { shift: true });
+            break;
+          case "l":
+            Keys.send("right", { shift: true });
+            break;
+          case "p":
+            //FIX: Keys.send("v", Keys.clipboardMods());
+            Mode.toNormal(true);
+            break;
+          case "}":
+            Move.toEndOfPara(true);
+            break;
+          case "{":
+            Move.toStartOfPara(true);
+            break;
+          case "b":
+            Select.toStartOfWord();
+            break;
+          case "e":
+          case "w":
+            Select.toEndOfWord();
+            break;
+          case "^":
+          case "_":
+          case "0":
+            Select.toStartOfLine();
+            break;
+          case "$":
+            Select.toEndOfLine();
+            break;
+          case "G":
+            Keys.send("end", { control: true, shift: true });
+            break;
+          case "g":
+            Keys.send("home", { control: true, shift: true });
+            break;
+          case "c":
+          case "d":
+          case "y":
+            Operate.run(key);
+            break;
+          case "i":
+          case "a":
+            Mode.current = "waitForVisualInput";
+            break;
+          case "x":
+            Menu.click(Menu.items.cut);
+            Mode.toNormal(true);
+            break;
+          case ">":
+            // Indent selection
+            Keys.send("bracketRight", { control: true });
+            Mode.toNormal(true);
+            break;
+          case "<":
+            // Outdent selection
+            Keys.send("bracketLeft", { control: true });
+            Mode.toNormal(true);
+            break;
+        }
+      },
+    };
+
+    /*
+     * ======================================================================================
+     * MENU
+     * Google Docs menu interaction: finds, caches, and clicks menu items by simulating
+     * mouse events on the native menu bar.
+     * ======================================================================================
      */
-    function simulateClick(el, x = 0, y = 0) {
-      const eventSequence = ["mouseover", "mousedown", "mouseup", "click"];
-      for (const eventName of eventSequence) {
-        const event = new MouseEvent(eventName, {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          detail: 1,
-          screenX: x,
-          screenY: y,
-          clientX: x,
-          clientY: y,
-          ctrlKey: false,
-          altKey: false,
-          shiftKey: false,
-          metaKey: false,
-          button: 0,
-          relatedTarget: null,
-        });
-        el.dispatchEvent(event);
-      }
-    }
+    const Menu = {
+      /** Cached DOM elements for menu items, keyed by caption. */
+      _cache: {},
 
-    /**
-     * Activates a top-level menu in Google Docs (File, Edit, etc.).
-     * @param {string} menuCaption - The menu name to activate.
-     */
-    function activateTopLevelMenu(menuCaption) {
-      const buttons = Array.from(document.querySelectorAll(".menu-button"));
-      const button = buttons.find((el) => el.innerText.trim() === menuCaption);
-      if (!button) {
-        console.error(`VimDocs: Couldn't find top-level button ${menuCaption}`);
-        return;
-      }
-      simulateClick(button);
-      simulateClick(button);
-    }
+      /** Menu item definitions keyed by action name. */
+      items: {
+        copy: { parent: "Edit", caption: "Copy" },
+        cut: { parent: "Edit", caption: "Cut" },
+        paste: { parent: "Edit", caption: "Paste" },
+        redo: { parent: "Edit", caption: "Redo" },
+        undo: { parent: "Edit", caption: "Undo" },
+        find: { parent: "Edit", caption: "Find" },
+      },
 
+      /**
+       * Clicks a Google Docs menu item by its definition.
+       * @param {Object} itemCaption - Menu item definition with parent and caption.
+       */
+      click(itemCaption) {
+        const item = Menu.get(itemCaption);
+        if (item) Menu.simulateClick(item);
+      },
+
+      /**
+       * Gets a cached menu item element or finds and caches it.
+       * @param {Object} menuItem - Menu item definition with parent and caption.
+       * @param {boolean} [silenceWarning=false] - Suppress console warning if not found.
+       * @returns {Element|null} The menu item element or null if not found.
+       */
+      get(menuItem, silenceWarning = false) {
+        const caption = menuItem.caption;
+        let el = Menu._cache[caption];
+        if (el) return el;
+        el = Menu.find(menuItem);
+        if (!el) {
+          if (!silenceWarning)
+            console.error(
+              "VimDocs: Could not find menu item",
+              menuItem.caption,
+            );
+          return null;
+        }
+        return (Menu._cache[caption] = el);
+      },
+
+      /**
+       * Finds a menu item element by activating its parent menu and searching.
+       * @param {Object} menuItem - Menu item definition with parent and caption.
+       * @returns {Element|null} The menu item element or null if not found.
+       */
+      find(menuItem) {
+        Menu.activateTopLevel(menuItem.parent);
+        const menuItemEls = document.querySelectorAll(".goog-menuitem");
+        const caption = menuItem.caption;
+        const isRegexp = caption instanceof RegExp;
+        for (const el of Array.from(menuItemEls)) {
+          const label = el.innerText;
+          if (!label) continue;
+          if (isRegexp) {
+            if (caption.test(label)) return el;
+          } else {
+            if (label.startsWith(caption)) return el;
+          }
+        }
+        return null;
+      },
+
+      /**
+       * Simulates a full mouse click sequence on an element.
+       * @param {Element} el - The element to click.
+       * @param {number} [x=0] - X coordinate for the click.
+       * @param {number} [y=0] - Y coordinate for the click.
+       */
+      simulateClick(el, x = 0, y = 0) {
+        const eventSequence = ["mouseover", "mousedown", "mouseup", "click"];
+        for (const eventName of eventSequence) {
+          const event = new MouseEvent(eventName, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            detail: 1,
+            screenX: x,
+            screenY: y,
+            clientX: x,
+            clientY: y,
+            ctrlKey: false,
+            altKey: false,
+            shiftKey: false,
+            metaKey: false,
+            button: 0,
+            relatedTarget: null,
+          });
+          el.dispatchEvent(event);
+        }
+      },
+
+      /**
+       * Activates a top-level menu in Google Docs (File, Edit, etc.).
+       * @param {string} menuCaption - The menu name to activate.
+       */
+      activateTopLevel(menuCaption) {
+        const buttons = Array.from(document.querySelectorAll(".menu-button"));
+        const button = buttons.find(
+          (el) => el.innerText.trim() === menuCaption,
+        );
+        if (!button) {
+          console.error(
+            `VimDocs: Couldn't find top-level button ${menuCaption}`,
+          );
+          return;
+        }
+        Menu.simulateClick(button);
+        Menu.simulateClick(button);
+      },
+    };
+
+    iframe.contentDocument.addEventListener("keydown", Vim.onKeyDown, true);
     Mode.toNormal();
   }
 
