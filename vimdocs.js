@@ -36,8 +36,8 @@
     mode: {
       normal: { bg: "#1670AD", fg: "white" },
       insert: { bg: "#2B8A5E", fg: "white" },
-      visual: { bg: "#FFA653", fg: "white" },
-      "v-line": { bg: "#FFA653", fg: "white" },
+      visual: { bg: "#FFA653", fg: "#101825" },
+      "v-line": { bg: "#FFA653", fg: "#101825" },
       wait: { bg: "indianred", fg: "white" },
     },
   };
@@ -382,8 +382,16 @@
             color_key = "normal";
         }
 
-        this.indicator.style.backgroundColor = COLORSCHEME.mode[color_key].bg;
-        this.indicator.style.color = COLORSCHEME.mode[color_key].fg;
+        this.indicator.style.setProperty(
+          "background-color",
+          COLORSCHEME.mode[color_key].bg,
+          "important",
+        );
+        this.indicator.style.setProperty(
+          "color",
+          COLORSCHEME.mode[color_key].fg,
+          "important",
+        );
       },
 
       /**
@@ -743,7 +751,7 @@
 
         Find.is_active = true;
         Find.is_char_search = true;
-        Mode.current = "normal";
+        Mode.set("normal");
       },
 
       /**
@@ -1100,10 +1108,10 @@
       waitForFirstInput(key) {
         switch (key) {
           case "i":
-            Mode.current = "waitForTextObject";
+            Mode.set("waitForTextObject");
             break;
           case "a":
-            Mode.current = "waitForTextObject";
+            Mode.set("waitForTextObject");
             break;
           case "w":
             Select.toEndOfWord();
@@ -1185,7 +1193,7 @@
             Move.toEndOfPara(true);
             break;
         }
-        Mode.current = "v-line";
+        Mode.set("v-line");
       },
     };
 
@@ -1201,6 +1209,23 @@
       _repeat: {
         times: 0,
         mode: "normal",
+      },
+
+      /** Mode-to-handler dispatch table. */
+      _dispatch: {
+        normal: (key) => Vim.handleNormal(key),
+        visual: (key) => Vim.handleVisualLine(key),
+        "v-line": (key) => Vim.handleVisualLine(key),
+        waitForFirstInput: (key) => Operate.waitForFirstInput(key),
+        waitForSecondInput: (key) => Operate.waitForSecondInput(key),
+        waitForVisualInput: (key) => Operate.waitForVisualInput(key),
+        waitForTextObject: (key) => Operate.waitForTextObject(key),
+        multipleMotion: (key) => Vim.handleMultipleMotion(key),
+        waitForFindChar: (key) => Find.handleFindChar(key),
+        waitForIndent: (key) => Edit.indent(key),
+        waitForOutdent: (key) => Edit.outdent(key),
+        waitForZoom: (key) => Vim.handleZoom(key),
+        waitForGo: (key) => Vim.handleGo(key),
       },
 
       /**
@@ -1231,24 +1256,7 @@
             Vim.repeatMotion(Vim.handleVisualLine, Vim._repeat.times, key);
             break;
         }
-        Mode.current = Vim._repeat.mode;
-      },
-
-      /** Mode-to-handler dispatch table. */
-      _dispatch: {
-        normal: (key) => Vim.handleNormal(key),
-        visual: (key) => Vim.handleVisualLine(key),
-        "v-line": (key) => Vim.handleVisualLine(key),
-        waitForFirstInput: (key) => Operate.waitForFirstInput(key),
-        waitForSecondInput: (key) => Operate.waitForSecondInput(key),
-        waitForVisualInput: (key) => Operate.waitForVisualInput(key),
-        waitForTextObject: (key) => Operate.waitForTextObject(key),
-        multipleMotion: (key) => Vim.handleMultipleMotion(key),
-        waitForFindChar: (key) => Find.handleFindChar(key),
-        waitForIndent: (key) => Edit.indent(key),
-        waitForOutdent: (key) => Edit.outdent(key),
-        waitForZoom: (key) => Vim.handleZoom(key),
-        waitForGo: (key) => Vim.handleGo(key),
+        Mode.set(Vim._repeat.mode);
       },
 
       /**
@@ -1424,7 +1432,7 @@
        */
       handleNormal(key) {
         if (/[1-9]/.test(key)) {
-          Mode.current = "multipleMotion";
+          Mode.set("multipleMotion");
           Vim._repeat.mode = "normal";
           Vim._repeat.times = Number(key);
           return;
@@ -1481,7 +1489,7 @@
             Move.toStartOfWord();
             break;
           case "g":
-            Mode.current = "waitForGo";
+            Mode.set("waitForGo");
             return;
           case "G":
             Keys.send("end", { control: true });
@@ -1490,7 +1498,7 @@
           case "d":
           case "y":
             Operate.pending = key;
-            Mode.current = "waitForFirstInput";
+            Mode.set("waitForFirstInput");
             break;
           case "p":
             //FIX: Keys.send("v", Keys.clipboardMods());
@@ -1551,7 +1559,7 @@
             } else {
               Find.is_forward = true;
               Find.is_till = false;
-              Mode.current = "waitForFindChar";
+              Mode.set("waitForFindChar");
             }
             return;
           case "F":
@@ -1560,7 +1568,7 @@
             } else {
               Find.is_forward = false;
               Find.is_till = false;
-              Mode.current = "waitForFindChar";
+              Mode.set("waitForFindChar");
             }
             return;
           case "t":
@@ -1569,7 +1577,7 @@
             } else {
               Find.is_forward = true;
               Find.is_till = true;
-              Mode.current = "waitForFindChar";
+              Mode.set("waitForFindChar");
             }
             return;
           case "T":
@@ -1578,7 +1586,7 @@
             } else {
               Find.is_forward = false;
               Find.is_till = true;
-              Mode.current = "waitForFindChar";
+              Mode.set("waitForFindChar");
             }
             return;
           case ";":
@@ -1625,13 +1633,13 @@
             Keys.send("y", { control: true });
             break;
           case ">":
-            Mode.current = "waitForIndent";
+            Mode.set("waitForIndent");
             return;
           case "<":
-            Mode.current = "waitForOutdent";
+            Mode.set("waitForOutdent");
             return;
           case "z":
-            Mode.current = "waitForZoom";
+            Mode.set("waitForZoom");
             return;
           case ":":
             Command.open();
@@ -1664,7 +1672,7 @@
        */
       handleVisualLine(key) {
         if (/[1-9]/.test(key)) {
-          Mode.current = "multipleMotion";
+          Mode.set("multipleMotion");
           Vim._repeat.mode = "v-line";
           Vim._repeat.times = Number(key);
           return;
@@ -1722,7 +1730,7 @@
             break;
           case "i":
           case "a":
-            Mode.current = "waitForVisualInput";
+            Mode.set("waitForVisualInput");
             break;
           case "x":
             Menu.click(Menu.items.cut);
