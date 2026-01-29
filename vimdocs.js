@@ -822,6 +822,26 @@
         }, 100);
       },
 
+      /**
+       * Cancels an active search, closing the find window and restoring
+       * cursor position for character searches (f/F/t/T).
+       */
+      cancelSearch() {
+        const wasCharSearch = Find.is_char_search;
+        const wasTill = Find.is_till;
+        const wasForward = Find.is_forward;
+        Find.closeFindWindow();
+        if (wasCharSearch) {
+          if (wasTill && !wasForward) {
+            Keys.send("right");
+            Keys.send("right");
+          } else {
+            Keys.send("left");
+            if (wasTill) Keys.send("left");
+          }
+        }
+      },
+
       /** Closes the Google Docs find bar and resets search state. */
       closeFindWindow() {
         const find_window = GoogleDocs.getFindWindow();
@@ -1214,133 +1234,120 @@
         Mode.current = Vim._repeat.mode;
       },
 
+      /** Mode-to-handler dispatch table. */
+      _dispatch: {
+        normal: (key) => Vim.handleNormal(key),
+        visual: (key) => Vim.handleVisualLine(key),
+        "v-line": (key) => Vim.handleVisualLine(key),
+        waitForFirstInput: (key) => Operate.waitForFirstInput(key),
+        waitForSecondInput: (key) => Operate.waitForSecondInput(key),
+        waitForVisualInput: (key) => Operate.waitForVisualInput(key),
+        waitForTextObject: (key) => Operate.waitForTextObject(key),
+        multipleMotion: (key) => Vim.handleMultipleMotion(key),
+        waitForFindChar: (key) => Find.handleFindChar(key),
+        waitForIndent: (key) => Edit.indent(key),
+        waitForOutdent: (key) => Edit.outdent(key),
+        waitForZoom: (key) => Vim.handleZoom(key),
+        waitForGo: (key) => Vim.handleGo(key),
+      },
+
+      /**
+       * Handles Ctrl-modified shortcuts.
+       * @param {KeyboardEvent} e - The keyboard event.
+       * @returns {boolean} True if the event was consumed.
+       */
+      handleCtrl(e) {
+        if (!e.ctrlKey) return false;
+
+        // Ctrl+Space: Toggle checkbox (any mode)
+        if (e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          Keys.send("enter", { control: true, alt: true });
+          return true;
+        }
+
+        // Ctrl+O in insert: temporary normal mode
+        if (Mode.current === "insert" && e.key === "o") {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          Mode.toNormal();
+          Mode.temp_normal = true;
+          return true;
+        }
+
+        // Ctrl+U/D/R in normal mode
+        if (Mode.current === "normal") {
+          const ctrlNormal = { u: "pageup", d: "pagedown" };
+          if (ctrlNormal[e.key]) {
+            e.preventDefault();
+            Keys.send(ctrlNormal[e.key]);
+            return true;
+          }
+          if (e.key === "r") {
+            e.preventDefault();
+            Menu.click(Menu.items.redo);
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      /**
+       * Handles replace-char mode (vim `r`).
+       * @param {KeyboardEvent} e - The keyboard event.
+       * @returns {boolean} True if the event was consumed.
+       */
+      handleReplaceChar(e) {
+        if (Mode.current !== "insert" || !Mode.replace_char) return false;
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          Mode.toNormal();
+          return true;
+        }
+        if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+          Keys.send("delete");
+          requestAnimationFrame(() => {
+            Keys.send("left");
+            Mode.toNormal();
+          });
+          return true;
+        }
+        return false;
+      },
+
+      /**
+       * Handles Escape key: cancels active search, exits visual mode, returns to normal.
+       */
+      handleEscape() {
+        if (Find.is_active) Find.cancelSearch();
+        if (Mode.isVisual()) Keys.send("right");
+        Mode.toNormal();
+      },
+
       /**
        * Main keyboard event handler. Routes keys to appropriate mode handlers.
        * @param {KeyboardEvent} e - The keyboard event from the editor iframe.
        */
       onKeyDown(e) {
         if (["Shift", "Meta", "Control", "Alt", ""].includes(e.key)) return;
-
-        // Ctrl+Space: Toggle checkbox (sends Ctrl+Alt+Enter)
-        if (e.ctrlKey && e.key === " ") {
-          e.preventDefault();
-          e.stopPropagation();
-          Keys.send("enter", { control: true, alt: true });
-          return;
-        }
-
-        if (e.ctrlKey && Mode.current === "normal") {
-          if (e.key === "u") {
-            e.preventDefault();
-            Keys.send("pageup");
-            return;
-          }
-          if (e.key === "d") {
-            e.preventDefault();
-            Keys.send("pagedown");
-            return;
-          }
-          if (e.key === "r") {
-            e.preventDefault();
-            Menu.click(Menu.items.redo);
-            return;
-          }
-        }
-
-        if (e.ctrlKey && Mode.current === "insert" && e.key === "o") {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          Mode.toNormal();
-          Mode.temp_normal = true;
-          return;
-        }
-
-        if (Mode.current === "insert" && Mode.replace_char) {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            Mode.toNormal();
-            return;
-          }
-          if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
-            Keys.send("delete");
-
-            // Use requestAnimationFrame to wait for delete to process
-            requestAnimationFrame(() => {
-              Keys.send("left");
-              Mode.toNormal();
-            });
-
-            return;
-          }
-        }
-
+        if (Vim.handleCtrl(e)) return;
+        if (Vim.handleReplaceChar(e)) return;
         if (e.altKey || e.ctrlKey || e.metaKey) return;
 
         if (e.key === "Escape") {
           e.preventDefault();
-          if (Find.is_active) {
-            const wasCharSearch = Find.is_char_search;
-            const wasTill = Find.is_till;
-            const wasForward = Find.is_forward;
-            Find.closeFindWindow();
-            if (wasCharSearch) {
-              if (wasTill && !wasForward) {
-                Keys.send("right");
-                Keys.send("right");
-              } else {
-                Keys.send("left");
-                if (wasTill) Keys.send("left");
-              }
-            }
-          }
-          if (Mode.current === "v-line" || Mode.current === "visual")
-            Keys.send("right");
-          Mode.toNormal();
+          Vim.handleEscape();
           return;
         }
 
-        if (Mode.current != "insert") {
+        const handler = Vim._dispatch[Mode.current];
+        if (handler) {
           e.preventDefault();
           e.stopPropagation();
-          switch (Mode.current) {
-            case "normal":
-              Vim.handleNormal(e.key);
-              break;
-            case "visual":
-            case "v-line":
-              Vim.handleVisualLine(e.key);
-              break;
-            case "waitForFirstInput":
-              Operate.waitForFirstInput(e.key);
-              break;
-            case "waitForSecondInput":
-              Operate.waitForSecondInput(e.key);
-              break;
-            case "waitForVisualInput":
-              Operate.waitForVisualInput(e.key);
-              break;
-            case "waitForTextObject":
-              Operate.waitForTextObject(e.key);
-              break;
-            case "multipleMotion":
-              Vim.handleMultipleMotion(e.key);
-              break;
-            case "waitForFindChar":
-              Find.handleFindChar(e.key);
-              break;
-            case "waitForIndent":
-              Edit.indent(e.key);
-              break;
-            case "waitForOutdent":
-              Edit.outdent(e.key);
-              break;
-            case "waitForZoom":
-              Vim.handleZoom(e.key);
-              break;
-            case "waitForGo":
-              Vim.handleGo(e.key);
-              break;
-          }
+          handler(e.key);
         }
       },
 
@@ -1436,19 +1443,7 @@
           const isSlashCycleKey =
             !Find.is_char_search && (key === "n" || key === "N");
           if (!isCharCycleKey && !isSlashCycleKey) {
-            const wasCharSearch = Find.is_char_search;
-            const wasTill = Find.is_till;
-            const wasForward = Find.is_forward;
-            Find.closeFindWindow();
-            if (wasCharSearch) {
-              if (wasTill && !wasForward) {
-                Keys.send("right");
-                Keys.send("right");
-              } else {
-                Keys.send("left");
-                if (wasTill) Keys.send("left");
-              }
-            }
+            Find.cancelSearch();
           }
         }
 
