@@ -1313,6 +1313,8 @@
         times: 0,
         mode: "normal",
       },
+      /** Whether a `g` action was initiated from visual mode. */
+      from_visual: false,
 
       /** Mode-to-handler dispatch table. */
       _dispatch: {
@@ -1463,6 +1465,7 @@
           Mode.toNormal(true);
           return;
         }
+        Vim.from_visual = false;
         Mode.toNormal();
       },
 
@@ -1562,7 +1565,17 @@
             Keys.send("pagedown", { control: true, shift: true });
             break;
         }
-        Mode.toNormal();
+        if (Vim.from_visual) {
+          const direction = Mode.visual_direction === "left" ? "left" : "right";
+          Vim.from_visual = false;
+          setTimeout(() => {
+            Keys.send(direction);
+            Mode.toNormal(true);
+          }, 500);
+          return;
+        } else {
+          Mode.toNormal();
+        }
       },
 
       /**
@@ -1825,6 +1838,10 @@
         switch (key) {
           case "":
             break;
+          case "g":
+            Vim.from_visual = true;
+            Mode.set("waitForGo");
+            return;
           case "h":
             Mode.visual_direction = "left";
             Keys.send("left", { shift: true });
