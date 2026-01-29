@@ -952,38 +952,107 @@
     function goToStartOfPara(shift = false) {
       sendKeyEvent("up", paragraphMods(shift));
     }
-    /** Opens a new line above cursor and enters insert mode (vim `O`). */
-    function addLineTop() {
-      goToStartOfLine();
-      sendKeyEvent("enter");
-      sendKeyEvent("up");
-      Mode.toInsert();
-    }
-    /** Opens a new line below cursor and enters insert mode (vim `o`). */
-    function addLineBottom() {
-      goToEndOfLine();
-      sendKeyEvent("enter");
-      Mode.toInsert();
-    }
-    /** Moves cursor right and enters insert mode, handling line wrap (vim `a`). */
-    function handleAppend() {
-      const cursor = GoogleDocs.getCursor();
-      if (!cursor) {
-        sendKeyEvent("right");
+
+    /*
+     * ======================================================================================
+     * EDIT
+     * Handles editing operations: line insertion (o/O), append (a), indent/outdent (>>/<</),
+     * and list formatting toggles.
+     * ======================================================================================
+     */
+    const Edit = {
+      /** Opens a new line above cursor and enters insert mode (vim `O`). */
+      addLineTop() {
+        goToStartOfLine();
+        sendKeyEvent("enter");
+        sendKeyEvent("up");
         Mode.toInsert();
-        return;
-      }
-      const originalTop = cursor.getBoundingClientRect().top;
-      sendKeyEvent("right");
-      // Use requestAnimationFrame to wait for cursor position update
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const newTop = cursor.getBoundingClientRect().top;
-          if (newTop > originalTop + 10) sendKeyEvent("left");
+      },
+      /** Opens a new line below cursor and enters insert mode (vim `o`). */
+      addLineBottom() {
+        goToEndOfLine();
+        sendKeyEvent("enter");
+        Mode.toInsert();
+      },
+      /** Moves cursor right and enters insert mode, handling line wrap (vim `a`). */
+      append() {
+        const cursor = GoogleDocs.getCursor();
+        if (!cursor) {
+          sendKeyEvent("right");
           Mode.toInsert();
+          return;
+        }
+        const originalTop = cursor.getBoundingClientRect().top;
+        sendKeyEvent("right");
+        // Use requestAnimationFrame to wait for cursor position update
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const newTop = cursor.getBoundingClientRect().top;
+            if (newTop > originalTop + 10) sendKeyEvent("left");
+            Mode.toInsert();
+          });
         });
-      });
-    }
+      },
+      /**
+       * Handles indent command (vim `>>`).
+       * Also handles list formatting: >* (bullet), >- (hyphen), >n (numbered), >[ or >] (checklist).
+       * @param {string} key - The key pressed after `>`.
+       */
+      indent(key) {
+        switch (key) {
+          case ">":
+            // Indent current line
+            sendKeyEvent("bracketRight", { control: true });
+            break;
+          case "*":
+          case "-":
+          case "l":
+            // Bullet list (Ctrl+Shift+8)
+            sendKeyEvent("eight", { control: true, shift: true });
+            break;
+          case "n":
+            // Numbered list (Ctrl+Shift+7)
+            sendKeyEvent("seven", { control: true, shift: true });
+            break;
+          case "[":
+          case "]":
+          case "t":
+            // Checklist (Ctrl+Shift+9)
+            sendKeyEvent("nine", { control: true, shift: true });
+            break;
+        }
+        Mode.toNormal();
+      },
+      /**
+       * Handles outdent command (vim `<<`).
+       * Also handles removing list formatting with same keys as indent (toggles off).
+       * @param {string} key - The key pressed after `<`.
+       */
+      outdent(key) {
+        switch (key) {
+          case "<":
+            // Outdent current line
+            sendKeyEvent("bracketLeft", { control: true });
+            break;
+          case "*":
+          case "-":
+            // Toggle off bullet list (Ctrl+Shift+8)
+            sendKeyEvent("eight", { control: true, shift: true });
+            break;
+          case "n":
+            // Toggle off numbered list (Ctrl+Shift+7)
+            sendKeyEvent("seven", { control: true, shift: true });
+            break;
+          case "[":
+          case "]":
+            // Toggle off checklist (Ctrl+Shift+9)
+            sendKeyEvent("nine", { control: true, shift: true });
+            break;
+        }
+        Mode.toNormal();
+      },
+    };
+
     /**
      * Executes the pending operator (c, d, y, p, g) on the current selection.
      * @param {string} [operation=STATE.longStringOp] - The operator to execute.
@@ -1252,10 +1321,10 @@
             Find.handleFindChar(e.key);
             break;
           case "waitForIndent":
-            handleIndent(e.key);
+            Edit.indent(e.key);
             break;
           case "waitForOutdent":
-            handleOutdent(e.key);
+            Edit.outdent(e.key);
             break;
           case "waitForZoom":
             handleZoom(e.key);
@@ -1265,66 +1334,6 @@
             break;
         }
       }
-    }
-
-    /**
-     * Handles indent command (vim `>>`).
-     * Also handles list formatting: >* (bullet), >- (hyphen), >n (numbered), >[ or >] (checklist).
-     * @param {string} key - The key pressed after `>`.
-     */
-    function handleIndent(key) {
-      switch (key) {
-        case ">":
-          // Indent current line
-          sendKeyEvent("bracketRight", { control: true });
-          break;
-        case "*":
-        case "-":
-        case "l":
-          // Bullet list (Ctrl+Shift+8)
-          sendKeyEvent("eight", { control: true, shift: true });
-          break;
-        case "n":
-          // Numbered list (Ctrl+Shift+7)
-          sendKeyEvent("seven", { control: true, shift: true });
-          break;
-        case "[":
-        case "]":
-        case "t":
-          // Checklist (Ctrl+Shift+9)
-          sendKeyEvent("nine", { control: true, shift: true });
-          break;
-      }
-      Mode.toNormal();
-    }
-
-    /**
-     * Handles outdent command (vim `<<`).
-     * Also handles removing list formatting with same keys as indent (toggles off).
-     * @param {string} key - The key pressed after `<`.
-     */
-    function handleOutdent(key) {
-      switch (key) {
-        case "<":
-          // Outdent current line
-          sendKeyEvent("bracketLeft", { control: true });
-          break;
-        case "*":
-        case "-":
-          // Toggle off bullet list (Ctrl+Shift+8)
-          sendKeyEvent("eight", { control: true, shift: true });
-          break;
-        case "n":
-          // Toggle off numbered list (Ctrl+Shift+7)
-          sendKeyEvent("seven", { control: true, shift: true });
-          break;
-        case "[":
-        case "]":
-          // Toggle off checklist (Ctrl+Shift+9)
-          sendKeyEvent("nine", { control: true, shift: true });
-          break;
-      }
-      Mode.toNormal();
     }
 
     /**
@@ -1484,7 +1493,7 @@
           //FIX: sendKeyEvent("v", clipboardMods());
           break;
         case "a":
-          handleAppend();
+          Edit.append();
           break;
         case "A":
           goToEndOfLine();
@@ -1521,10 +1530,10 @@
           Mode.toVisualLine();
           break;
         case "o":
-          addLineBottom();
+          Edit.addLineBottom();
           break;
         case "O":
-          addLineTop();
+          Edit.addLineTop();
           break;
         case "u":
           clickMenu(menuItems.undo);
