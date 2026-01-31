@@ -66,18 +66,42 @@
    */
   const GoogleDocs = {
     last_active_element: null,
+    _cursorObserver: null,
 
     getCursor: () => {
       const cursor =
         document.getElementById("kix-current-user-cursor-caret") || null;
       if (cursor) {
-        cursor.style.setProperty(
-          "border-color",
-          COLORSCHEME["cursor"],
-          "important",
-        );
+        GoogleDocs._applyCursorColor(cursor);
+        GoogleDocs._watchCursor(cursor);
       }
       return cursor;
+    },
+
+    _applyCursorColor: (cursor) => {
+      const c = COLORSCHEME["cursor"];
+      cursor.style.setProperty("border-color", c, "important");
+      cursor.style.setProperty("border-top-color", c, "important");
+      cursor.style.setProperty("border-right-color", c, "important");
+      cursor.style.setProperty("border-bottom-color", c, "important");
+      cursor.style.setProperty("border-left-color", c, "important");
+    },
+
+    _watchCursor: (cursor) => {
+      if (GoogleDocs._cursorObserver) return;
+      const observer = new MutationObserver(() => {
+        observer.disconnect();
+        GoogleDocs._applyCursorColor(cursor);
+        observer.observe(cursor, {
+          attributes: true,
+          attributeFilter: ["style"],
+        });
+      });
+      GoogleDocs._cursorObserver = observer;
+      observer.observe(cursor, {
+        attributes: true,
+        attributeFilter: ["style"],
+      });
     },
     getFindWindow: () => {
       return document.getElementById("docs-findbar-id") || null;
