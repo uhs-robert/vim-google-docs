@@ -20,8 +20,7 @@
 /* TODO:
  * - Macros & named registers (q, @, "a, "0, "+).
  * - Marks & jump list (m, ', `, Ctrl-o, Ctrl-i).
- * - % to jump to the next bracket character.
- * - More motions & text objects (quotes/brackets, %, H/M/L, sentences, first‑nonblank distinctions).
+ * - More motions & text objects (quotes/brackets, H/M/L, sentences, first‑nonblank distinctions).
  * - Editing bonuses like J join lines, ~/g~, gv reselect.
  */
 
@@ -398,6 +397,10 @@
           action: "toggleCase",
           description: "Cycle case (lower→UPPER→Title)",
         },
+        "%": {
+          action: "matchBracket",
+          description: "Jump to matching bracket",
+        },
       },
       visual: {
         g: { action: "goPrefix", description: "Enter go-command mode" },
@@ -460,6 +463,10 @@
         "~": {
           action: "toggleCase",
           description: "Cycle case (lower→UPPER→Title)",
+        },
+        "%": {
+          action: "matchBracket",
+          description: "Extend selection to matching bracket",
         },
       },
       operator: {
@@ -1239,6 +1246,59 @@ ${cmdList}</pre>
         }
       },
 
+      /**
+       * Opens the Find bar, searches for the given text, cycles to the Nth
+       * occurrence (forward or backward), then closes the Find bar.
+       * @param {string} text - The text to search for.
+       * @param {number} occurrence - Which occurrence to navigate to (1-based).
+       * @param {boolean} [forward=true] - Direction to cycle: true for forward, false for backward.
+       */
+      goToOccurrence(text, occurrence, forward = true) {
+        GoogleDocs.saveActiveElement();
+        Keys.send("f", { control: true });
+        setTimeout(() => {
+          const findInput = document.activeElement;
+          if (!findInput || findInput.tagName !== "INPUT") return;
+
+          findInput.value = text;
+          findInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+          const findWindow = GoogleDocs.getFindWindow();
+          if (findWindow) findWindow.style.display = "none";
+
+          if (occurrence <= 0) {
+            setTimeout(() => {
+              Find.closeFindWindow();
+              Keys.send("left");
+            }, 200);
+            return;
+          }
+
+          let cycled = 0;
+          const cycleInterval = setInterval(() => {
+            findInput.dispatchEvent(
+              new KeyboardEvent("keydown", {
+                bubbles: true,
+                cancelable: true,
+                key: "Enter",
+                code: "Enter",
+                keyCode: 13,
+                which: 13,
+                shiftKey: !forward,
+              }),
+            );
+            cycled++;
+            if (cycled >= occurrence) {
+              clearInterval(cycleInterval);
+              setTimeout(() => {
+                Find.closeFindWindow();
+                Keys.send("left");
+              }, 200);
+            }
+          }, 200);
+        }, 50);
+      },
+
       /** Closes the Google Docs find bar and resets search state.
        */
       closeFindWindow() {
@@ -1357,6 +1417,102 @@ ${cmdList}</pre>
        */
       toStartOfPara(shift = false) {
         Keys.send("up", Keys.paragraphMods(shift));
+      },
+
+      /**
+       * Jumps cursor to the matching bracket character (vim `%`).
+       * Works with (), [], and {}. Uses select-and-read to find the match,
+       * then the Find bar to navigate there.
+       * @param {boolean} [shift=false] - Whether to select while moving (visual mode).
+       */
+      toMatchingBracket(shift = false) {
+        const BRACKETS = {
+          "(": ")",
+          ")": "(",
+          "[": "]",
+          "]": "[",
+          "{": "}",
+          "}": "{",
+        };
+        const OPENERS = new Set(["(", "[", "{"]);
+
+        /**
+         * Counts how many times the closer appears before nesting depth
+         * reaches zero. Returns -1 if no balanced match is found.
+         * @param {string} text - Text to scan (already trimmed/reversed as needed).
+         * @param {string} opener - The opening bracket character.
+         * @param {string} closer - The closing bracket character to match.
+         * @returns {number} Number of closer occurrences to reach the match, or -1.
+         */
+        function countNestingOccurrences(text, opener, closer) {
+          let depth = 1;
+          let count = 0;
+          for (let i = 0; i < text.length; i++) {
+            if (text[i] === opener) {
+              depth++;
+            } else if (text[i] === closer) {
+              depth--;
+              count++;
+              if (depth === 0) return count;
+            }
+          }
+          return -1; // no match
+        }
+
+        /**
+         * Reads the selected text, counts nesting to find the matching
+         * bracket, and navigates to it via the Find bar.
+         * @param {string} ch - The bracket character under the cursor.
+         * @param {string} target - The matching bracket character.
+         * @param {boolean} isOpener - Whether ch is an opening bracket.
+         */
+        function scanForMatch(ch, target, isOpener) {
+          const lineText = getSelectedText();
+          Keys.send(isOpener ? "left" : "right");
+          if (!lineText) return;
+
+          // For openers, shift+end includes the bracket itself — skip it.
+          // For closers, shift+home excludes the bracket, so no skip needed.
+          const trimmed = isOpener ? lineText.substring(1) : lineText;
+          const text = isOpener ? trimmed : [...trimmed].reverse().join("");
+          const targetCount = countNestingOccurrences(text, ch, target);
+          if (targetCount < 0) return;
+
+          // For openers, the Find bar's initial highlight already lands on
+          // the first forward match, so we cycle targetCount - 1 more times.
+          // For closers, we cycle backward the full targetCount times.
+          const occurrence = isOpener ? targetCount - 1 : targetCount;
+          setTimeout(
+            () => Find.goToOccurrence(target, occurrence, isOpener),
+            50,
+          );
+        }
+
+        /**
+         * Selects text from the cursor to the start or end of the document
+         * so scanForMatch can read it.
+         * @param {string} ch - The bracket character under the cursor.
+         * @param {string} target - The matching bracket character.
+         * @param {boolean} isOpener - Whether ch is an opening bracket.
+         */
+        function selectTextToScan(ch, target, isOpener) {
+          Keys.send(isOpener ? "end" : "home", {
+            control: true,
+            shift: true,
+          });
+          setTimeout(() => scanForMatch(ch, target, isOpener), 50);
+        }
+
+        Keys.send("right", { shift: true });
+        setTimeout(() => {
+          const ch = getSelectedText();
+          Keys.send("left");
+          if (!ch || !BRACKETS[ch]) return;
+
+          const target = BRACKETS[ch];
+          const isOpener = OPENERS.has(ch);
+          setTimeout(() => selectTextToScan(ch, target, isOpener), 50);
+        }, 50);
       },
     };
 
@@ -2251,6 +2407,9 @@ ${cmdList}</pre>
           case "backspace":
             Keys.send("left");
             break;
+          case "matchBracket":
+            Move.toMatchingBracket();
+            return;
           default:
             return;
         }
@@ -2376,6 +2535,9 @@ ${cmdList}</pre>
             Mode.toNormal(true);
             break;
           }
+          case "matchBracket":
+            Move.toMatchingBracket(true);
+            return;
         }
       },
     };
