@@ -14,8 +14,10 @@
 // @updateURL https://update.greasyfork.org/scripts/562026/VimDocs%20%28Vim%20for%20Google%20Docs%29.meta.js
 // ==/UserScript==
 
-// TODO: Add more `:` commands (e.g., :q, :run (open alt+/), :$s/text/replace/gc etc.)
+// TODO: Add more `:` commands (e.g., save each entry to cache and press up to cycle through history)
 // TODO: Add keymap list to the help menu.
+//TODO: Add README
+//TODO: Add to greasyfork
 
 (function () {
   "use strict";
@@ -41,6 +43,7 @@
       command: { bg: "#C08DFF", fg: "#101825" },
       wait: { bg: "#68BFB5", fg: "#101825" },
       replace: { bg: "indianred", fg: "white" },
+      substitute: { bg: "#C08DFF", fg: "#101825" },
     },
   };
 
@@ -388,6 +391,10 @@
             color_key = "wait";
             this.indicator.textContent = "VIM ACTION";
             break;
+          case "substituteConfirm":
+            color_key = "substitute";
+            this.indicator.textContent = "SUBSTITUTE";
+            break;
           default:
             color_key = "normal";
         }
@@ -436,7 +443,8 @@
           this.current === "waitForOutdent" ||
           this.current === "waitForZoom" ||
           this.current === "waitForGo" ||
-          this.current === "multipleMotion"
+          this.current === "multipleMotion" ||
+          this.current === "substituteConfirm"
         );
       },
 
@@ -544,6 +552,15 @@
           description: "Close document (go to Google Drive)",
           execute: () => {
             window.location.href = "https://docs.google.com/";
+          },
+        },
+        s: {
+          description: "Substitute :s/find/replace/[g][c][i]",
+          execute: () => {
+            Command.showMessage(
+              "Usage: :s/pattern/replacement/[flags] or :%s/pattern/replacement/[flags]",
+            );
+            GoogleDocs.restoreFocus(() => Mode.toNormal());
           },
         },
       },
@@ -681,6 +698,15 @@
        * @param {string} cmdString - The command string entered by the user.
        */
       execute(cmdString) {
+        // Check for substitute command: :s/pattern/replacement/flags or :%s/pattern/replacement/flags
+        const subMatch = cmdString.match(
+          /^(%?)s\/((?:[^/\\]|\\.)*)(?:\/((?:[^/\\]|\\.)*)(?:\/([gciaI]*))?)?$/,
+        );
+        if (subMatch) {
+          Substitute.run(subMatch[2], subMatch[3] || "", subMatch[4] || "");
+          return;
+        }
+
         const parts = cmdString.split(/\s+/);
         const cmdName = parts[0];
         const args = parts.slice(1);
@@ -722,9 +748,13 @@
         msgEl.textContent = message;
         msgEl.style.display = "block";
 
-        // Auto-hide after 3 seconds
-        setTimeout(() => {
-          msgEl.style.display = "none";
+        // Clear any previous auto-hide timer
+        if (this._messageTimer) clearTimeout(this._messageTimer);
+        // Auto-hide after 3 seconds (skip while in substituteConfirm)
+        this._messageTimer = setTimeout(() => {
+          if (Mode.current !== "substituteConfirm") {
+            msgEl.style.display = "none";
+          }
         }, 3000);
       },
     };
@@ -1346,6 +1376,7 @@
         waitForOutdent: (key) => Edit.outdent(key),
         waitForZoom: (key) => Vim.handleZoom(key),
         waitForGo: (key) => Vim.handleGo(key),
+        substituteConfirm: (key) => Substitute.handleConfirmKey(key),
       },
 
       /**
@@ -1472,6 +1503,10 @@
        * Handles Escape key: cancels active search, exits visual mode, returns to normal.
        */
       handleEscape() {
+        if (Mode.current === "substituteConfirm") {
+          Substitute._cleanup();
+          return;
+        }
         if (Find.is_active) Find.cancelSearch();
         if (Mode.isVisual()) {
           const direction = Mode.visual_direction === "left" ? "left" : "right";
@@ -1926,6 +1961,280 @@
             Mode.toNormal(true);
             break;
         }
+      },
+    };
+
+    /*
+     * ======================================================================================
+     * SUBSTITUTE
+     * Implements Vim-style :s and :%s substitute commands by driving the hidden
+     * Google Docs Find and Replace dialog.
+     * ======================================================================================
+     */
+    const Substitute = {
+      _hideStyleId: "vimdocs-findreplace-hide",
+      _pattern: null,
+      _replacement: null,
+      _confirmMode: false,
+      _findInput: null,
+      _replaceInput: null,
+
+      /**
+       * Hides or shows the Find and Replace dialog via CSS.
+       * @param {boolean} hidden - Whether to hide the dialog.
+       */
+      _setDialogHidden(hidden) {
+        const id = this._hideStyleId;
+        const existing = document.getElementById(id);
+        if (!hidden) {
+          if (existing) existing.remove();
+          return;
+        }
+        if (existing) return;
+        const style = document.createElement("style");
+        style.id = id;
+        style.textContent =
+          ".docs-findinput-container, .docs-findandreplacedialog { opacity: 0 !important; }";
+        document.head.appendChild(style);
+      },
+
+      /**
+       * Main entry point. Parses flags and opens the hidden Find & Replace dialog.
+       * @param {string} pattern - Search pattern (empty = reuse last search).
+       * @param {string} replacement - Replacement text.
+       * @param {string} flags - Flag string (g, c, i, I).
+       */
+      run(pattern, replacement, flags) {
+        if (!pattern && Find.last_search) {
+          pattern = Find.last_search;
+        }
+        if (!pattern) {
+          Command.showMessage("No pattern specified and no previous search");
+          GoogleDocs.restoreFocus(() => Mode.toNormal());
+          return;
+        }
+
+        this._pattern = pattern;
+        this._replacement = replacement;
+        this._confirmMode = flags.includes("c");
+
+        this._setDialogHidden(true);
+
+        GoogleDocs.restoreFocus(() => {
+          Keys.send("h", { control: true });
+
+          setTimeout(() => {
+            this._locateDialogInputs();
+
+            if (!this._findInput) {
+              console.error("VimDocs: Could not find Find and Replace inputs");
+              this._cleanup();
+              return;
+            }
+
+            this._replaceInput.focus();
+            this._setInputValue(this._replaceInput, replacement);
+
+            this._findInput.focus();
+            this._setInputValue(this._findInput, pattern);
+            const arrowOpts = {
+              key: "ArrowRight",
+              code: "ArrowRight",
+              keyCode: 39,
+              which: 39,
+              bubbles: true,
+              cancelable: true,
+            };
+            this._findInput.dispatchEvent(
+              new KeyboardEvent("keydown", arrowOpts),
+            );
+            this._findInput.dispatchEvent(
+              new KeyboardEvent("keyup", arrowOpts),
+            );
+
+            this._handleCaseFlag(flags);
+
+            if (this._confirmMode) {
+              this._setDialogHidden(true);
+              Mode.set("substituteConfirm");
+              this._startDialogListener();
+              Command.showMessage("Replace? (y)es (n)o (a)ll (q)uit");
+            } else {
+              setTimeout(() => {
+                this._clickDialogButton("replace-all");
+                setTimeout(() => {
+                  this._cleanup();
+                  Command.showMessage(
+                    `Substituted "${pattern}" → "${replacement}"`,
+                  );
+                }, 150);
+              }, 150);
+            }
+          }, 300);
+        });
+      },
+
+      /**
+       * Locates the Find and Replace input fields in the DOM.
+       */
+      _locateDialogInputs() {
+        const dialog = document.querySelector(".docs-findandreplacedialog");
+        if (dialog) {
+          const inputs = dialog.querySelectorAll(
+            'input[type="text"], input:not([type])',
+          );
+          if (inputs.length >= 2) {
+            this._findInput = inputs[0];
+            this._replaceInput = inputs[1];
+            return;
+          }
+        }
+        const inputs = document.querySelectorAll(".docs-findinput-input input");
+        if (inputs.length >= 2) {
+          this._findInput = inputs[0];
+          this._replaceInput = inputs[1];
+        }
+      },
+
+      /**
+       * Sets an input's value and dispatches the input event.
+       * @param {HTMLInputElement} input - The input element.
+       * @param {string} value - The value to set.
+       */
+      _setInputValue(input, value) {
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+
+      /** Button ID map for the Find and Replace dialog. */
+      _buttonIds: {
+        replace: "docs-findandreplacedialog-button-replace",
+        "replace-all": "docs-findandreplacedialog-button-replace-all",
+        previous: "docs-findandreplacedialog-button-previous",
+        next: "docs-findandreplacedialog-button-next",
+      },
+
+      /**
+       * Clicks a button in the Find and Replace dialog by action name.
+       * @param {"replace"|"replace-all"|"previous"|"next"} action - The button to click.
+       * @returns {boolean} True if the button was found and clicked.
+       */
+      _clickDialogButton(action) {
+        const id = this._buttonIds[action];
+        if (!id) return false;
+        const btn = document.getElementById(id);
+        if (!btn) return false;
+        Menu.simulateClick(btn);
+        return true;
+      },
+
+      /**
+       * Handles i/I flags for case sensitivity.
+       * @param {string} flags - The flag string.
+       */
+      _handleCaseFlag(flags) {
+        if (flags.includes("i") || flags.includes("I")) {
+          const dialog = document.querySelector(".docs-findandreplacedialog");
+          if (!dialog) return;
+          const checkbox = dialog.querySelector('input[type="checkbox"]');
+          if (checkbox) {
+            const wantCaseSensitive = flags.includes("I");
+            if (checkbox.checked !== wantCaseSensitive) {
+              Menu.simulateClick(checkbox);
+            }
+          }
+        }
+      },
+
+      /**
+       * Handles keystrokes in substituteConfirm mode.
+       * y = replace current and go to next
+       * n = skip current, go to next
+       * a = replace all remaining
+       * q = quit
+       * @param {string} key - The key pressed.
+       */
+      /** Bound keydown handler on the dialog. */
+      _onDialogKeyDown: null,
+
+      /** Attaches a keydown listener to the Find and Replace dialog. */
+      _startDialogListener() {
+        const dialog = document.querySelector(".docs-findandreplacedialog");
+        if (!dialog) return;
+        this._onDialogKeyDown = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.handleConfirmKey(e.key);
+        };
+        dialog.addEventListener("keydown", this._onDialogKeyDown, true);
+      },
+
+      /** Removes the keydown listener from the dialog. */
+      _stopDialogListener() {
+        if (this._onDialogKeyDown) {
+          const dialog = document.querySelector(".docs-findandreplacedialog");
+          if (dialog) {
+            dialog.removeEventListener("keydown", this._onDialogKeyDown, true);
+          }
+          this._onDialogKeyDown = null;
+        }
+      },
+
+      handleConfirmKey(key) {
+        switch (key) {
+          case "y":
+            this._clickDialogButton("replace");
+            setTimeout(() => {
+              this._clickDialogButton("next");
+              Command.showMessage("Replace? (y)es (n)o (a)ll (q)uit");
+            }, 100);
+            break;
+          case "n":
+            this._clickDialogButton("next");
+            Command.showMessage("Replace? (y)es (n)o (a)ll (q)uit");
+            break;
+          case "a":
+            this._clickDialogButton("replace-all");
+            setTimeout(() => this._cleanup(), 150);
+            break;
+          case "q":
+          case "Escape":
+            this._cleanup();
+            break;
+          default:
+            Command.showMessage("Replace? (y)es (n)o (a)ll (q)uit");
+            break;
+        }
+      },
+
+      /**
+       * Cleans up: unhides dialog, closes it, restores focus.
+       */
+      _cleanup() {
+        this._stopDialogListener();
+        // Close dialog while still hidden, then remove hide style after it's gone
+        const dialog = document.querySelector(".docs-findandreplacedialog");
+        if (dialog) {
+          const closeBtn =
+            dialog.querySelector('[aria-label="Close"]') ||
+            dialog.querySelector(".docs-findandreplacedialog-close");
+          if (closeBtn) {
+            Menu.simulateClick(closeBtn);
+          }
+        }
+        setTimeout(() => this._setDialogHidden(false), 200);
+        const patternLen = this._pattern ? this._pattern.length : 1;
+        this._findInput = null;
+        this._replaceInput = null;
+        this._pattern = null;
+        this._replacement = null;
+        this._confirmMode = false;
+        GoogleDocs.restoreFocus(() => {
+          for (let i = 0; i < patternLen; i++) {
+            Keys.send("left");
+          }
+          Mode.toNormal();
+        });
       },
     };
 
