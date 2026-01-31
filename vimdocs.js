@@ -289,6 +289,18 @@
           return { [clipboardModifierKey]: true };
         },
 
+        /**
+         * Repeats a keypress a specified number of times.
+         * @param {string} key - The key name from keyCodes.
+         * @param {number} times - Number of times to repeat.
+         * @param {object} [mods={}] - Modifier keys for the keypress.
+         */
+        repeat(key, times, mods = {}) {
+          for (let i = 0; i < times; i++) {
+            this.send(key, mods);
+          }
+        },
+
         /** Dispatches a simulated key event to the Google Docs editor. */
         send(key, mods = {}) {
           const keyCode = keyCodes[key];
