@@ -371,6 +371,7 @@
         ":": { action: "commandMode", description: "Open command line" },
         Enter: { action: "enterKey", description: "Close find window" },
         Backspace: { action: "backspace", description: "Move left" },
+        "~": { action: "toggleCase", description: "Cycle case (lower→UPPER→Title)" },
       },
       visual: {
         g: { action: "goPrefix", description: "Enter go-command mode" },
@@ -430,6 +431,7 @@
         x: { action: "deleteSelection", description: "Delete selection" },
         ">": { action: "indentSelection", description: "Indent selection" },
         "<": { action: "outdentSelection", description: "Outdent selection" },
+        "~": { action: "toggleCase", description: "Cycle case (lower→UPPER→Title)" },
       },
       operator: {
         i: { action: "inner", description: "Inner text object" },
@@ -2180,6 +2182,18 @@ ${cmdList}</pre>
               Find.handleSlashSearch(false, Find.last_search);
             }
             return;
+          case "toggleCase": {
+            Keys.send("right", { shift: true });
+            const ch = getSelectedText();
+            if (ch) {
+              const toggled = ch === ch.toLowerCase()
+                ? ch.toUpperCase()
+                : ch.toLowerCase();
+              insertText(toggled);
+              Keys.send("left");
+            }
+            break;
+          }
           case "deleteChar": {
             Keys.send("right", { shift: true });
             const selection = getSelectedText();
@@ -2318,6 +2332,19 @@ ${cmdList}</pre>
             Keys.send("bracketLeft", { control: true });
             Mode.toNormal(true);
             break;
+          case "toggleCase": {
+            const sel = getSelectedText();
+            if (sel) {
+              const toggled = [...sel].map(c =>
+                c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()
+              ).join("");
+              insertText(toggled);
+              const direction = Mode.visual_direction === "left" ? "left" : "right";
+              Keys.send(direction);
+            }
+            Mode.toNormal(true);
+            break;
+          }
         }
       },
     };
