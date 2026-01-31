@@ -507,6 +507,7 @@
         "?": { action: "showHelp", description: "Show help" },
         T: { action: "prevTab", description: "Go to previous tab" },
         t: { action: "nextTab", description: "Go to next tab" },
+        "~": { action: "toggleCase", description: "Toggle case with motion" },
       },
       zoom: {
         "-": { action: "zoomOut", description: "Zoom out" },
@@ -1727,6 +1728,19 @@ ${cmdList}</pre>
             break;
           case "visual":
             break;
+          case "toggleCase": {
+            const sel = getSelectedText();
+            if (sel) {
+              const toggled = [...sel]
+                .map((c) =>
+                  c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase(),
+                )
+                .join("");
+              insertText(toggled);
+            }
+            Mode.toNormal(true);
+            break;
+          }
           case "goPrefix":
             Move.toTop();
             break;
@@ -2136,6 +2150,29 @@ ${cmdList}</pre>
           case "nextTab":
             Keys.send("pagedown", { control: true, shift: true });
             break;
+          case "toggleCase":
+            if (Vim.from_visual) {
+              const sel = getSelectedText();
+              if (sel) {
+                const toggled = [...sel]
+                  .map((c) =>
+                    c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase(),
+                  )
+                  .join("");
+                insertText(toggled);
+              }
+              const direction =
+                Mode.visual_direction === "left" ? "left" : "right";
+              Vim.from_visual = false;
+              Keys.send(direction);
+              Mode.toNormal(true);
+              return;
+            }
+            Operate.pending = "toggleCase";
+            Operate.operator_count = 1;
+            Operate.motion_count = 0;
+            Mode.set("waitForFirstInput");
+            return;
         }
         if (Vim.from_visual) {
           const direction = Mode.visual_direction === "left" ? "left" : "right";
