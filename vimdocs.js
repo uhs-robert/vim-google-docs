@@ -42,14 +42,19 @@
       mantle: "#1A283F",
       surface: "#22385C",
     },
+    fg: {
+      core: "#D9E6FA",
+      muted: "#4D88A7",
+      error: "#ff6b6b",
+    },
     mode: {
-      normal: { bg: "#1670AD", fg: "white" },
-      insert: { bg: "#2B8A5E", fg: "white" },
+      normal: { bg: "#1670AD", fg: "#D9E6FA" },
+      insert: { bg: "#2B8A5E", fg: "#D9E6FA" },
       visual: { bg: "#FFA653", fg: "#101825" },
       "v-line": { bg: "#FFA653", fg: "#101825" },
       command: { bg: "#C08DFF", fg: "#101825" },
       wait: { bg: "#68BFB5", fg: "#101825" },
-      replace: { bg: "indianred", fg: "white" },
+      replace: { bg: "indianred", fg: "#D9E6FA" },
       substitute: { bg: "#C08DFF", fg: "#101825" },
     },
   };
@@ -790,9 +795,9 @@
         this.input.style.fontSize = "14px";
         this.input.style.width = "200px";
         this.input.style.outline = "none";
-        this.input.style.backgroundColor = "#1a1a1a";
-        this.input.style.color = "white";
-        this.input.placeholder = ":h";
+        this.input.style.backgroundColor = COLORSCHEME.bg.mantle;
+        this.input.style.color = COLORSCHEME.fg.core;
+        this.input.placeholder = "help";
 
         this.container.appendChild(this.input);
         StatusLine.container.appendChild(this.container);
@@ -815,12 +820,12 @@
           helpEl.style.borderRadius = "8px";
           helpEl.style.fontFamily = "monospace";
           helpEl.style.fontSize = "14px";
-          helpEl.style.backgroundColor = "#1a1a1a";
-          helpEl.style.color = "white";
+          helpEl.style.backgroundColor = COLORSCHEME.bg.mantle;
+          helpEl.style.color = COLORSCHEME.fg.core;
           helpEl.style.zIndex = "10000";
           helpEl.style.minWidth = "300px";
           helpEl.style.boxShadow = "0 4px 20px rgba(0,0,0,0.5)";
-          helpEl.style.border = "1px solid #333";
+          helpEl.style.border = `1px solid ${COLORSCHEME.bg.surface}`;
           helpEl.style.outline = "none";
           document.body.appendChild(helpEl);
         }
@@ -866,11 +871,11 @@
             VimDocs Help
           </div>
           <div style="max-height: 70vh; overflow-y: auto;">
-            <pre style="margin: 0; color: #ccc;">${keymapContent}
+            <pre style="margin: 0; color: ${COLORSCHEME.fg.core};">${keymapContent}
   <span style="color: ${COLORSCHEME.mode.normal.bg}; font-weight: bold;">COMMANDS</span>
 ${cmdList}</pre>
           </div>
-          <div style="margin-top: 16px; color: #666; font-size: 12px;">
+          <div style="margin-top: 16px; color: ${COLORSCHEME.fg.muted}; font-size: 12px; text-align: center;">
             Press Escape, Enter, or q to close
           </div>
         `;
@@ -892,6 +897,21 @@ ${cmdList}</pre>
           } else if (e.key === "k" && scrollContainer) {
             e.preventDefault();
             scrollContainer.scrollTop -= 40;
+          } else if (e.key === "G" && scrollContainer) {
+            e.preventDefault();
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          } else if (e.key === "g" && scrollContainer) {
+            e.preventDefault();
+            this._helpWaitG = true;
+            const waitG = (e2) => {
+              if (e2.key === "g") {
+                e2.preventDefault();
+                scrollContainer.scrollTop = 0;
+              }
+              this._helpWaitG = false;
+              helpEl.removeEventListener("keydown", waitG);
+            };
+            helpEl.addEventListener("keydown", waitG);
           }
         };
         helpEl.addEventListener("keydown", closeHelp);
@@ -1010,8 +1030,8 @@ ${cmdList}</pre>
           msgEl.style.borderRadius = "4px";
           msgEl.style.fontFamily = "monospace";
           msgEl.style.fontSize = "13px";
-          msgEl.style.backgroundColor = "#333";
-          msgEl.style.color = "#ff6b6b";
+          msgEl.style.backgroundColor = COLORSCHEME.bg.surface;
+          msgEl.style.color = COLORSCHEME.fg.error;
           msgEl.style.zIndex = "9999";
           msgEl.style.maxWidth = "400px";
           document.body.appendChild(msgEl);
