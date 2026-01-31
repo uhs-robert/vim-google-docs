@@ -14,9 +14,17 @@
 // @updateURL https://update.greasyfork.org/scripts/562026/VimDocs%20%28Vim%20for%20Google%20Docs%29.meta.js
 // ==/UserScript==
 
-// TODO: Add more `:` commands
+// TODO: Add more `:` commands (e.g., :w, :wq, :x, :set, ranges, :noh)
 //TODO: Add README
 //TODO: Add to greasyfork
+/* TODO:
+ * - Macros & named registers (q, @, "a, "0, "+).
+ * - Marks & jump list (m, ', `, Ctrl-o, Ctrl-i).
+ * - ~ to toggle casing from UPPER to Title to Lower.
+ * - % to jump to the next bracket character.
+ * - More motions & text objects (quotes/brackets, %, H/M/L, sentences, first‑nonblank distinctions).
+ * - Editing bonuses like J join lines, ~/g~, gv reselect.
+ */
 
 (function () {
   "use strict";
