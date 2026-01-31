@@ -1356,7 +1356,7 @@ ${cmdList}</pre>
       },
       /** Selects the word under cursor (vim `iw` text object). */
       innerWord() {
-        Keys.send("left");
+        Keys.send("right", Keys.wordMods());
         Keys.send("left", Keys.wordMods());
         Keys.send("right", Keys.wordMods(true));
       },
