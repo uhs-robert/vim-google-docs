@@ -1370,8 +1370,7 @@ ${cmdList}</pre>
       /** Selects the word under cursor (vim `iw` text object). */
       innerWord() {
         Keys.send("right", Keys.wordMods());
-        Keys.send("left", Keys.wordMods());
-        Keys.send("right", Keys.wordMods(true));
+        Keys.send("left", Keys.wordMods(true));
       },
       /** Selects the paragraph under cursor (vim `ip` text object). */
       innerPara() {
